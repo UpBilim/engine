@@ -1,0 +1,49 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Hello 2D</title></head>
+<body>
+<script src="../src/upbilim-engine.js"></script>
+<script>
+// Catch the falling stars: arrows / A-D or on-screen buttons on phones.
+UB.create({ width: 960, height: 540, background: '#10142a' });
+UB.scene('menu', {
+  draw(g) {
+    g.gradient('#1b1f4b', '#10142a');
+    g.text('Star Catcher', 480, 200, { size: 64, align: 'center', bold: true, color: '#ffd166' });
+    if (g.button('Play', 380, 300, 200, 70, { color: '#4cc9f0' }) || UB.pressed('jump')) UB.go('play');
+  },
+});
+UB.scene('play', {
+  enter(s) {
+    s.x = 480; s.stars = []; s.score = 0; s.lives = 3;
+    UB.touchControls(['left', 'right']);
+    UB.every(0.6, () => s.stars.push({ x: UB.rand(40, 920), y: -20, v: UB.rand(180, 320) }));
+    UB.music('happy');
+  },
+  update(s, dt) {
+    if (UB.key('left')) s.x -= 460 * dt;
+    if (UB.key('right')) s.x += 460 * dt;
+    s.x = UB.clamp(s.x, 50, 910);
+    for (const st of s.stars) {
+      st.y += st.v * dt;
+      if (Math.abs(st.x - s.x) < 60 && Math.abs(st.y - 480) < 26) { st.y = 999; s.score++; UB.score(s.score); UB.sfx('coin'); UB.burst(st.x, 470, { color: '#ffd166' }); UB.popup('+1', st.x, 440); }
+      else if (st.y > 560 && st.y < 900) { st.y = 999; s.lives--; UB.sfx('hit'); UB.shake(6, 0.2); if (s.lives <= 0) UB.go('over', { score: s.score }); }
+    }
+    s.stars = s.stars.filter((st) => st.y < 900);
+  },
+  draw(g, s) {
+    for (const st of s.stars) g.circle(st.x, st.y, 14 + UB.wave(6, 2), '#ffd166');
+    g.roundRect(s.x - 60, 474, 120, 22, 11, '#4cc9f0');
+    UB.hud.score(s.score, { label: 'Stars' });
+    UB.hud.hearts(800, 20, s.lives, 3);
+  },
+});
+UB.scene('over', {
+  enter(s, d) { s.score = d.score; UB.store.best = Math.max(UB.store.best || 0, s.score); UB.music(null); UB.finish({ score: s.score }); },
+  draw(g, s) {
+    g.dialog('Game over', 'Stars: ' + s.score + '   Best: ' + UB.store.best);
+    if (g.button('Again', 380, 380, 200, 64, { color: '#06d6a0' })) UB.go('play');
+  },
+});
+UB.start('menu');
+</script>
+</body></html>

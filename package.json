@@ -1,0 +1,15 @@
+{
+  "name": "upbilim-engine",
+  "version": "0.1.0",
+  "description": "A tiny game engine for kids' games and AI-written games: 2D canvas, 3D on three.js, real physics on Rapier, genre kits.",
+  "main": "src/upbilim-engine.js",
+  "files": ["src", "docs", "examples", "LICENSE", "README.md"],
+  "license": "MIT",
+  "author": "UpBilim",
+  "homepage": "https://github.com/UpBilim/engine",
+  "repository": { "type": "git", "url": "git+https://github.com/UpBilim/engine.git" },
+  "keywords": ["game-engine", "html5", "canvas", "three.js", "rapier", "physics", "education", "kids", "ai"],
+  "peerDependencies": { "three": ">=0.160.0", "@dimforge/rapier3d-compat": ">=0.19.0" },
+  "peerDependenciesMeta": { "three": { "optional": true }, "@dimforge/rapier3d-compat": { "optional": true } },
+  "scripts": { "serve": "python3 -m http.server 8080" }
+}

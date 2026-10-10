@@ -1,0 +1,48 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Physics 3D</title></head>
+<body>
+<script type="module">
+// Real physics: walk with WASD and push crates, Space jumps, F throws a ball, B drops a bomb.
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js';
+import * as RAPIER from 'https://cdn.jsdelivr.net/npm/@dimforge/rapier3d-compat@0.19.3/rapier.mjs';
+window.THREE = THREE; window.RAPIER = RAPIER;
+await import('../src/upbilim-engine.js');
+
+UB.ready(() => {
+  UB.create3d({ sky: '#8fd3ff' });
+  UB.scene('play', {
+    enter(s) {
+      UB.clear3d(); s.hits = 0;
+      s.hero = UB.spawn({ shape: 'box', w: 1, h: 2, d: 1, x: 0, y: 1, z: 6, color: '#ff6b6b' });
+      UB.player3d(s.hero, { speed: 7, jump: 9 });
+      UB.camera3d({ mode: 'follow', target: s.hero, distance: 11, height: 6 });
+      // a brick tower
+      for (let y = 0; y < 6; y++) for (let x = 0; x < 4 - (y % 2); x++)
+        UB.body(UB.spawn({ shape: 'box', x: -1.5 + x + (y % 2) * 0.5, y: 0.5 + y, z: -6, color: UB.pick(['#ef476f', '#ffd166', '#06d6a0', '#118ab2']) }));
+      // bowling pins
+      for (let row = 0; row < 4; row++) for (let k = 0; k <= row; k++)
+        UB.body(UB.spawn({ shape: 'cylinder', r: 0.18, h: 1.1, x: 6 + (k - row / 2) * 0.5, y: 0.55, z: -4 - row * 0.45, color: '#ffffff' }), { mass: 0.4 });
+      // crates to push and a platform
+      for (let i = 0; i < 4; i++) UB.body(UB.spawn({ shape: 'box', w: 1.2, h: 1.2, d: 1.2, x: -6 + i * 1.4, y: 0.6, z: 2, color: '#c08552' }), { mass: 0.6 });
+      UB.spawn({ shape: 'box', w: 4, h: 0.4, d: 6, x: -8, y: 0.8, z: -2, rotY: 0.3, color: '#8ecae6', solid: true });
+      // a pendulum on a rope
+      const bob = UB.spawn({ shape: 'sphere', r: 0.6, x: -4, y: 2, z: -6, color: '#f72585' });
+      UB.body(bob, { mass: 8 }).push(40, 0, 0);
+      UB.joint(bob, null, { type: 'rope', at: { x: -2, y: 6, z: -6 } });
+    },
+    update(s) {
+      const f = { x: -Math.sin(UB.look.yaw), z: -Math.cos(UB.look.yaw) };
+      if (UB.pressed('KeyF')) {
+        const ball = UB.spawn({ shape: 'sphere', r: 0.4, x: s.hero.x, y: s.hero.y + 0.5, z: s.hero.z - 1.2, color: '#3a0ca3' });
+        UB.body(ball, { mass: 4, bounce: 0.4 }).push(0, 6, -60).onHit((other) => { if (other) s.hits++; });
+        UB.sfx('shoot');
+      }
+      if (UB.pressed('KeyB')) { UB.explode(s.hero.x, 0, s.hero.z - 6, { radius: 6, power: 14 }); UB.burst3d(s.hero.x, 1, s.hero.z - 6, { count: 30 }); UB.sfx('hit'); }
+      if (s.hero.y < -10) { s.hero.x = 0; s.hero.y = 1; s.hero.z = 6; }
+    },
+    draw(g, s) { g.text('F: throw a ball   B: bomb   Space: jump   hits: ' + s.hits, 20, 20, { size: 22 }); },
+  });
+  UB.start('play');
+});
+</script>
+</body></html>
