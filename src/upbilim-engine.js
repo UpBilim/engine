@@ -1,4 +1,4 @@
-/*! UpBilim Engine v0.1.0 | MIT License | (c) 2026 UpBilim | https://upbilim.com
+/*! UpBilim Engine v0.2.0 | MIT License | (c) 2026 UpBilim | https://upbilim.com
  * A tiny game engine for kids' games and AI-written games: 2D canvas, 3D on three.js (window.THREE),
  * physics on Rapier (window.RAPIER), genre kits UB.kit.*. Reference: docs/API.md
  * Comments inside are in Russian: the engine is developed for UpBilim's game studio. */
@@ -36,7 +36,17 @@
     var t = ac.currentTime + (delay || 0), o = ac.createOscillator(), g = ac.createGain();
     o.type = type || 'square'; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(Math.max(30, f2), t + dur);
     g.gain.setValueAtTime(vol || 0.08, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
-    o.connect(g); g.connect(ac.destination); o.start(t); o.stop(t + dur + 0.02);
+    o.connect(g); g.connect(toneDest || ac.destination); o.start(t); o.stop(t + dur + 0.02);
+  };
+  // шумовой удар (бум, хлопок, свист, всплеск): общий буфер белого шума через фильтр
+  var noiseBuf = null, toneDest = null;
+  var noiseHit = function (dur, f1, f2, type, vol, delay) {
+    if (!ac) return;
+    if (!noiseBuf) { noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); var nd = noiseBuf.getChannelData(0); for (var i = 0; i < nd.length; i++) nd[i] = Math.random() * 2 - 1; }
+    var t = ac.currentTime + (delay || 0), src = ac.createBufferSource(), fl = ac.createBiquadFilter(), g = ac.createGain();
+    src.buffer = noiseBuf; fl.type = type || 'lowpass'; fl.frequency.setValueAtTime(f1, t); fl.frequency.exponentialRampToValueAtTime(Math.max(40, f2), t + dur);
+    g.gain.setValueAtTime(vol || 0.2, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    src.connect(fl); fl.connect(g); g.connect(toneDest || ac.destination); src.start(t, Math.random() * 0.5); src.stop(t + dur + 0.05);
   };
   var SFX = {
     jump: function () { tone(300, 700, 0.15, 'square', 0.06); },
@@ -49,8 +59,24 @@
     win: function () { [523, 659, 784, 1046].forEach(function (f, i) { tone(f, f, 0.18, 'triangle', 0.09, i * 0.12); }); },
     lose: function () { [392, 330, 262].forEach(function (f, i) { tone(f, f * 0.95, 0.25, 'sawtooth', 0.07, i * 0.18); }); },
     powerup: function () { tone(300, 1500, 0.35, 'square', 0.05); },
+    boom: function () { noiseHit(1.1, 900, 60, 'lowpass', 0.5); tone(90, 35, 0.6, 'sine', 0.25); },
+    pop: function () { noiseHit(0.08, 3000, 1500, 'bandpass', 0.25); tone(500, 900, 0.06, 'triangle', 0.05); },
+    whoosh: function () { noiseHit(0.45, 400, 2400, 'bandpass', 0.18); },
+    splash: function () { noiseHit(0.5, 2500, 500, 'lowpass', 0.25); noiseHit(0.25, 4000, 2000, 'highpass', 0.08, 0.05); },
+    magic: function () { [1046, 1318, 1568, 2093].forEach(function (f, i) { tone(f, f * 1.01, 0.25, 'sine', 0.05, i * 0.06); }); },
   };
-  UB.sfx = function (name) { var f = SFX[name]; if (f) f(); };
+  // звук «откуда-то»: в 3D — из точки мира ({ at: объект } или { x, y, z }), в 2D — слева/справа по { x } на экране
+  var spatial = null;   // ставит 3D-часть: (o) -> узел-вход с паннером или null
+  UB.sfx = function (name, o) {
+    var f = SFX[name]; if (!f) return;
+    if (!o || !ac) return f();
+    var dest = null, g = ac.createGain(); g.gain.value = o.volume == null ? 1 : o.volume;
+    if (UB.is3d && spatial && (o.at || o.z != null)) dest = spatial(o);
+    else if (o.x != null && ac.createStereoPanner) { dest = ac.createStereoPanner(); dest.pan.value = clamp((o.x / (W || 960)) * 2 - 1, -1, 1) * 0.8; }
+    g.connect(dest || ac.destination); if (dest) dest.connect(ac.destination);
+    toneDest = g; try { f(); } finally { toneDest = null; }
+    setTimeout(function () { try { g.disconnect(); if (dest) dest.disconnect(); } catch (e) {} }, 3000);
+  };
 
   // ---- ввод: клавиатура, мышь/тач в координатах игры, экранные кнопки на телефоне ----
   var held = {}, pressedNow = {}, aliases = { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown', jump: 'Space', fire: 'Space', action: 'Space' };
@@ -564,6 +590,7 @@
   // ==== 3D (если загружен THREE): мир на WebGL под 2D-слоем; сцены, ввод, звуки и 2D-интерфейс — общие ====
   (function () {
     var T = window.THREE;
+    var skyDome = null, sun = null, quality = null;
     var ents = [], scene = null, camera = null, renderer = null, gl = null, ground = null, cam = { mode: 'fixed', x: 0, y: 12, z: 18, look: { x: 0, y: 0, z: 0 } };
     var players = [], joy = { x: 0, y: 0 }, joyJump = false, padMade = false, fx = [];
     UB.is3d = false;
@@ -580,10 +607,31 @@
       renderer = new T.WebGLRenderer({ canvas: gl, antialias: (window.devicePixelRatio || 1) < 2, powerPreference: 'high-performance' });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       scene = new T.Scene(); scene.background = color(o.sky || '#8fd3ff');
-      if (o.fog !== false) scene.fog = new T.Fog(color(o.sky || '#8fd3ff'), o.fogNear || 40, o.fogFar || 140);
+      // небо — градиент: у горизонта светлее, вверху насыщеннее; туман того же цвета, что горизонт, — края мира тают в небе
+      var skyC = color(o.sky || '#8fd3ff'), horizon = skyC.clone().lerp(new T.Color(0xffffff), 0.35), zenith = skyC.clone().multiplyScalar(0.78);
+      if (o.skyGradient !== false) {
+        skyDome = new T.Mesh(new T.SphereGeometry(450, 24, 12), new T.ShaderMaterial({
+          side: T.BackSide, depthWrite: false, fog: false,
+          uniforms: { top: { value: zenith }, mid: { value: skyC }, bot: { value: horizon } },
+          vertexShader: 'varying float h; void main() { h = normalize(position).y; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+          fragmentShader: 'uniform vec3 top; uniform vec3 mid; uniform vec3 bot; varying float h; void main() { float t = clamp(h, 0.0, 1.0); vec3 c = t < 0.25 ? mix(bot, mid, t / 0.25) : mix(mid, top, (t - 0.25) / 0.75); gl_FragColor = vec4(h < 0.0 ? bot : c, 1.0); }',
+        }));
+        skyDome.renderOrder = -1; skyDome.frustumCulled = false; scene.add(skyDome);
+      }
+      if (o.fog !== false) scene.fog = new T.Fog(o.skyGradient !== false ? horizon : skyC, o.fogNear || 40, o.fogFar || 140);
       camera = new T.PerspectiveCamera(o.fov || 60, W / H, 0.1, 600);
+      // за туманом всё равно ничего не видно (цвет тумана) — дальше не рисуем вовсе; небо-сфера — чуть ближе дальней границы
+      if (o.fog !== false) { camera.far = Math.max(60, (o.fogFar || 140) * 1.15); camera.updateProjectionMatrix(); if (skyDome) skyDome.scale.setScalar(camera.far * 0.9 / 450); }
       scene.add(new T.HemisphereLight(0xffffff, 0x445566, 1.1));
-      var sun = new T.DirectionalLight(0xffffff, 1.2); sun.position.set(30, 60, 20); scene.add(sun);
+      sun = new T.DirectionalLight(0xffffff, 1.2); sun.position.set(30, 60, 20); scene.add(sun); scene.add(sun.target);
+      // мягкие тени от солнца: коробка теней 70 м ездит за камерой (см. render3d); качество 'auto' — слабое устройство их выключит
+      quality = { mode: o.quality || 'auto', shadows: o.shadows !== false && o.quality !== 'low', ratio: Math.min(window.devicePixelRatio || 1, o.quality === 'low' ? 1 : 1.5), frames: 0, slow: 0, t: 0 };
+      renderer.setPixelRatio(quality.ratio);
+      renderer.shadowMap.enabled = quality.shadows; renderer.shadowMap.type = T.PCFShadowMap;
+      sun.castShadow = quality.shadows; var sm = touch ? 1024 : 2048; sun.shadow.mapSize.set(sm, sm);
+      var shc = sun.shadow.camera; shc.left = -35; shc.right = 35; shc.top = 35; shc.bottom = -35; shc.near = 1; shc.far = 160;
+      sun.shadow.bias = -0.0004; sun.shadow.normalBias = 0.03; sun.shadow.radius = 3;
+      UB.quality3d = { shadows: quality.shadows, pixelRatio: quality.ratio };
       if (o.ground !== false) { var gs = o.groundSize || 240; ground = UB.spawn({ shape: 'box', x: 0, y: -0.5, z: 0, w: gs, h: 1, d: gs, color: o.groundColor || '#7ccf6b', solid: true }); ground.ground = true; }
       UB.onFit = function (sc, ox, oy) {
         gl.style.width = W * sc + 'px'; gl.style.height = H * sc + 'px'; gl.style.left = ox + 'px'; gl.style.top = oy + 'px';
@@ -615,6 +663,11 @@
           h = o.h || 0.9; w = h * (lc.width / lc.height || 1); mesh.scale.set(w, h, 1);
         };
         paint(o.text == null ? '' : o.text);
+      } else if (shape === 'character') {
+        mesh = character(o); var cs = o.scale || 1; w = 0.9 * cs; h = 2 * cs; d = 0.9 * cs;
+        mat = { dispose: function () {}, color: null };
+      } else if (shape === 'model') {
+        mesh = new T.Group(); mat = { dispose: function () {}, color: null };   // сама модель придёт, когда загрузится (UB.model3d)
       } else if (shape === 'prefab') {
         mesh = prefab(o.prefab || o.name || 'rock', o);
         var bb = PREFAB_BOX[o.prefab || o.name] || [1, 1, 1], sc = o.scale || 1;
@@ -627,21 +680,38 @@
         mesh = new T.Sprite(mat); mesh.scale.set(w, h, 1);
       } else {
         var geo = shape === 'sphere' ? new T.SphereGeometry(r, 20, 14) : shape === 'cylinder' ? new T.CylinderGeometry(r, r, h, 20) : shape === 'cone' ? new T.ConeGeometry(r, h, 20) : new T.BoxGeometry(w, h, d);
+        var bdef = o.block != null && shape === 'box' ? BLOCK_BY[String(o.block)] : null;
+        if (bdef && bdef.id && getAtlas()) {   // коробка из блока мира: текстура плитки повторяется по размеру
+          var bm = blockBoxMats(bdef, w, h, d); mesh = new T.Mesh(geo, bm);
+          mat = { color: null, map: null, dispose: function () { bm.forEach(function (m) { m.dispose(); }); } };
+        } else {
         mat = new T.MeshLambertMaterial({ color: color(o.color), transparent: o.opacity != null, opacity: o.opacity == null ? 1 : o.opacity, emissive: o.glow ? color(o.glow) : 0x000000 });
         mesh = new T.Mesh(geo, mat);
+        }
       }
+      var hp = shape === 'prefab' && !o.glow && HALO[o.prefab || o.name];
+      if (o.halo !== false && shape !== 'label' && shape !== 'image') {
+        if (hp) addHalo(mesh, o.color || hp[0], hp[1]).position.y = hp[2];
+        else if (o.glow) addHalo(mesh, o.glow, Math.min(4, Math.max(w, h, d) / (shape === 'prefab' ? (o.scale || 1) : 1) * 1.8));
+      }
+      if (shape !== 'label' && shape !== 'image') mesh.traverse(function (m) { if (m.isMesh) { m.castShadow = o.shadow !== false && !(o.opacity != null && o.opacity < 0.6); m.receiveShadow = true; } });
       scene.add(mesh);
       var e = { x: o.x || 0, y: o.y == null ? h / 2 : o.y, z: o.z || 0, w: w, h: h, d: d, rotY: o.rotY || 0, vx: 0, vy: 0, vz: 0, solid: !!o.solid, visible: true, data: o.data || {}, mesh: mesh, shape: shape,
-        setColor: function (c) { if (mat.color) mat.color.set(c); else if (shape === 'prefab') mesh.traverse(function (m) { if (m.material && m.userData.tint) m.material.color.set(c); }); },
+        setColor: function (c) { if (e._sleep) wakeE(e); e._pk = null; if (mat.color) mat.color.set(c); else if (shape === 'prefab' || shape === 'character') mesh.traverse(function (m) { if (m.material && m.userData.tint) m.material.color.set(c); }); },
         setText: function (t) { if (shape === 'label') { paint(t); e.w = w; e.h = h; } },
         remove: function () {
           if (e._phys) unphys(e);
+          if (e._sleep) wakeE(e);
           for (var pi = players.length - 1; pi >= 0; pi--) if (players[pi].e === e) { unplayer(players[pi]); players.splice(pi, 1); }
+          var ai = animated.indexOf(e); if (ai >= 0) animated.splice(ai, 1); if (e._mixer) e._mixer.stopAllAction();
           scene.remove(mesh);
-          if (shape === 'prefab') mesh.traverse(function (m) { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
-          else { if (mesh.geometry) mesh.geometry.dispose(); if (mat.map) mat.map.dispose(); mat.dispose(); }
+          if (shape === 'model') { /* геометрия общая у всех копий модели — не освобождаем */ }
+          else if (shape === 'character') mesh.traverse(function (m) { if (m.material && m.material.userData.own) m.material.dispose(); });
+          else if (shape === 'prefab') mesh.traverse(function (m) { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
+          else { if (mesh.geometry) mesh.geometry.dispose(); if (mat.map) mat.map.dispose(); mat.dispose(); mesh.children.forEach(function (c) { if (c.material) c.material.dispose(); }); }
           var i = ents.indexOf(e); if (i >= 0) ents.splice(i, 1);
         } };
+      if (shape === 'prefab') e._kind = o.prefab || o.name || 'rock';
       ents.push(e); return e;
     };
     // Готовые модели из простых фигур: центр группы — центр хитбокса (как у остальных объектов)
@@ -676,6 +746,174 @@
       return grp;
     };
     UB.prefab = function (kind, o) { o = Object.assign({}, o || {}); o.shape = 'prefab'; o.prefab = kind; return UB.spawn(o); };
+    // ==== Персонажи из кубиков (как в Roblox) и модели glTF со скелетной анимацией ====
+    // Анимации: 'idle' | 'walk' | 'run' | 'jump' | 'wave' | 'dance' | 'cheer' | 'hit'. Пока не задана своя (e.play), персонаж сам
+    // выбирает стоит / идёт / бежит / прыгает по тому, как двигается (у героя UB.player3d — ещё и по «на земле»).
+    var animated = [], charGeo = {}, charMats = {};
+    var character = function (o) {
+      var robot = o.style === 'robot';
+      // геометрия и неперекрашиваемые материалы — общие для всех персонажей (их могут быть десятки), одежда — своя (setColor, вспышка попадания)
+      var lam = function (c, glow, own) {
+        var key = c + '|' + (glow || ''); if (!own && charMats[key]) return charMats[key];
+        var m = new T.MeshLambertMaterial({ color: color(c), emissive: glow ? color(glow) : 0x000000 }); if (own) m.userData.own = true; else charMats[key] = m; return m;
+      };
+      var box = function (w, h, d, c, glow, own) { var k = w + 'x' + h + 'x' + d; return new T.Mesh(charGeo[k] || (charGeo[k] = new T.BoxGeometry(w, h, d)), lam(c, glow, own)); };
+      var at = function (m, x, y, z) { m.position.set(x, y, z); return m; };
+      var skin = o.skin || (robot ? '#b8c4d6' : '#f2c79c'), shirt = o.shirt || (robot ? '#7d8da8' : '#4cc9f0'), pants = o.pants || (robot ? '#5c6b82' : '#3a0ca3');
+      var root = new T.Group(), body = new T.Group(); root.add(body);
+      var joint = function (x, y) { var g = new T.Group(); g.position.set(x, y, 0); body.add(g); return g; };
+      // ноги: шарнир в бедре (y = −0.2 от центра; низ — −1)
+      var hipL = joint(0.16, -0.2), hipR = joint(-0.16, -0.2);
+      [hipL, hipR].forEach(function (hp) { hp.add(at(box(0.3, 0.62, 0.32, pants), 0, -0.31, 0)); hp.add(at(box(0.32, 0.18, 0.38, o.shoes || '#2b2d42'), 0, -0.71, 0.03)); });
+      var torso = at(box(0.68, 0.72, 0.38, shirt, null, true), 0, 0.15, 0); torso.userData.tint = true; body.add(torso);
+      // руки: шарнир в плече
+      var shL = joint(0.47, 0.44), shR = joint(-0.47, 0.44);
+      [shL, shR].forEach(function (sh) { var a = at(box(0.24, 0.5, 0.26, shirt, null, true), 0, -0.22, 0); a.userData.tint = true; sh.add(a); sh.add(at(box(0.22, 0.2, 0.24, skin), 0, -0.56, 0)); });
+      // в руке: бластер вдоль руки (при e.aim руки вытянуты вперёд — бластер смотрит туда же, куда персонаж)
+      if (o.item === 'blaster') { shR.add(at(box(0.12, 0.5, 0.17, '#2b2d42'), 0, -0.78, 0.04)); shR.add(at(box(0.08, 0.08, 0.08, o.itemColor || '#7df9ff', o.itemColor || '#7df9ff'), 0, -1.05, 0.04)); }
+      // голова с лицом (+z — перед: так смотрит герой при rotY = 0)
+      var neck = joint(0, 0.52);
+      neck.add(at(box(0.52, 0.52, 0.5, skin), 0, 0.27, 0));
+      var eye = o.eyes || (robot ? '#7df9ff' : '#1b1b2f');
+      [-0.12, 0.12].forEach(function (x) { neck.add(at(box(0.09, robot ? 0.07 : 0.11, 0.03, eye, robot ? eye : null), x, 0.31, 0.255)); });
+      if (!robot) neck.add(at(box(0.16, 0.035, 0.03, '#8d3b3b'), 0, 0.15, 0.255));
+      if (robot) { neck.add(at(box(0.04, 0.22, 0.04, '#8b949e'), 0, 0.63, 0)); neck.add(at(box(0.1, 0.1, 0.1, '#ff4d6d', '#ff4d6d'), 0, 0.77, 0)); }
+      else if (o.hair !== null && o.hair !== 'none') { var hc = o.hair || '#4a2b0f'; neck.add(at(box(0.56, 0.14, 0.54, hc), 0, 0.56, 0)); neck.add(at(box(0.56, 0.3, 0.12, hc), 0, 0.42, -0.22)); }
+      var hat = o.hat, hatC = o.hatColor || '#ef476f';
+      if (hat === 'cap') { neck.add(at(box(0.58, 0.16, 0.56, hatC), 0, 0.6, 0)); neck.add(at(box(0.5, 0.05, 0.26, hatC), 0, 0.54, 0.36)); }
+      else if (hat === 'crown') { neck.add(at(box(0.5, 0.12, 0.5, '#ffd166', '#7a5a00'), 0, 0.6, 0)); [[-0.19, -0.19], [0.19, -0.19], [-0.19, 0.19], [0.19, 0.19]].forEach(function (p) { neck.add(at(box(0.1, 0.14, 0.1, '#ffd166', '#7a5a00'), p[0], 0.72, p[1])); }); }
+      else if (hat === 'party') { var cone = at(new T.Mesh(charGeo.cone || (charGeo.cone = new T.ConeGeometry(0.2, 0.5, 12)), lam(hatC)), 0, 0.82, 0); neck.add(cone); }
+      else if (hat === 'helmet') { neck.add(at(box(0.6, 0.34, 0.58, hatC), 0, 0.5, -0.02)); neck.add(at(box(0.46, 0.14, 0.04, '#9ad1ff'), 0, 0.33, 0.3)); }
+      else if (hat === 'bow') { neck.add(at(box(0.16, 0.12, 0.1, hatC), -0.1, 0.62, 0)); neck.add(at(box(0.16, 0.12, 0.1, hatC), 0.1, 0.62, 0)); }
+      root.userData.rig = { body: body, hipL: hipL, hipR: hipR, shL: shL, shR: shR, neck: neck };
+      root.scale.setScalar(o.scale || 1);
+      return root;
+    };
+    var POSES = { wave: 1.6, dance: 3, cheer: 1.6, hit: 0.5, jump: 0.8 };
+    // поза персонажа из кубиков (углы в радианах): ноги/руки — вокруг x (минус — вперёд), руки в стороны — вокруг z
+    var pose = function (name, t) {
+      var p = { lx: 0, rx: 0, alx: 0, arx: 0, alz: 0.06, arz: -0.06, lean: 0, bob: 0, twist: 0, head: 0 }, s;
+      if (name === 'walk') { s = Math.sin(t * 9); p.lx = 0.6 * s; p.rx = -0.6 * s; p.alx = -0.5 * s; p.arx = 0.5 * s; p.bob = Math.abs(s) * 0.05; }
+      else if (name === 'run') { s = Math.sin(t * 13); p.lx = s; p.rx = -s; p.alx = -0.9 * s; p.arx = 0.9 * s; p.lean = 0.18; p.bob = Math.abs(s) * 0.1; }
+      else if (name === 'jump') { p.lx = -0.6; p.rx = 0.3; p.alx = p.arx = -2.6; p.alz = 0.25; p.arz = -0.25; }
+      else if (name === 'wave') { p.arz = -2.7 + 0.35 * Math.sin(t * 10); p.alx = 0.05 * Math.sin(t * 2); p.head = 0.1; }
+      else if (name === 'dance') { s = Math.sin(t * 6); p.alx = -1.2 - 1.2 * s; p.arx = -1.2 + 1.2 * s; p.twist = 0.35 * s; p.bob = 0.08 * Math.abs(Math.cos(t * 6)); p.lx = 0.25 * s; p.rx = -0.25 * s; }
+      else if (name === 'cheer') { p.alx = p.arx = -2.9 + 0.2 * Math.sin(t * 16); p.alz = 0.35; p.arz = -0.35; p.bob = 0.15 * Math.abs(Math.sin(t * 8)); }
+      else if (name === 'hit') { p.lean = -0.35; p.alx = p.arx = -0.6; p.alz = 0.5; p.arz = -0.5; p.head = -0.2; }
+      else { s = Math.sin(t * 2); p.alx = 0.05 * s; p.arx = -0.05 * s; p.bob = 0.02 * s; }
+      return p;
+    };
+    // что играть сейчас: своё (e.play) или по движению
+    var autoAnim = function (e, dt) {
+      if (e._lx == null) { e._lx = e.x; e._ly = e.y; e._lz = e.z; }
+      var v = dt > 0 ? Math.hypot(e.x - e._lx, e.z - e._lz) / dt : 0, vy = dt > 0 ? (e.y - e._ly) / dt : 0;
+      e._lx = e.x; e._ly = e.y; e._lz = e.z;
+      e._v = (e._v || 0) + (v - (e._v || 0)) * Math.min(1, dt * 10);   // сглаживаем: рывки кадров не дёргают анимацию
+      if (e._once) { e._onceT -= dt; if (e._onceT > 0) return e._once; e._once = null; }
+      if (e._loop) return e._loop;
+      var air = e._pc ? !e._pc.onGround : Math.abs(vy) > 2.5;
+      return air ? 'jump' : e._v > 4.6 * (e.h / 2) ? 'run' : e._v > 0.4 ? 'walk' : 'idle';
+    };
+    var animatable = function (e) {
+      e.play = function (name, o) {
+        o = o || {}; name = String(name || 'idle');
+        if (o.once) { e._once = name; e._onceT = o.time || POSES[name.toLowerCase()] || clipLen(e, name) || 1.5; } else { e._once = null; e._loop = name === 'auto' ? null : name; }
+        return e;
+      };
+      e.stop = function () { e._once = e._loop = null; return e; };
+      animated.push(e);
+    };
+    UB.character3d = function (o) {
+      o = Object.assign({}, o || {}); o.shape = 'character';
+      var e = UB.spawn(o); e.y = o.y == null ? e.h / 2 : o.y;
+      e._t = Math.random() * 10; e._cur = pose('idle', 0);
+      e._animate = function (dt) {
+        var name = autoAnim(e, dt).toLowerCase(), rig = e.mesh.userData.rig; if (!rig) return;
+        e._t += dt * (name === 'walk' || name === 'run' ? Math.max(0.6, Math.min(1.6, e._v / (name === 'run' ? 7 : 3) / (e.h / 2))) : 1);
+        var tg = pose(name, e._t), c = e._cur, k = 1 - Math.exp(-dt * 14);
+        if (e.aim && !e._once) { tg.alx = -1.35; tg.arx = -1.5; tg.alz = -0.35; tg.arz = 0.1; }   // руки держат бластер перед собой (ноги — как обычно)
+        for (var key in tg) c[key] += (tg[key] - c[key]) * k;
+        rig.hipL.rotation.x = c.lx; rig.hipR.rotation.x = c.rx; rig.shL.rotation.x = c.alx; rig.shR.rotation.x = c.arx; rig.shL.rotation.z = c.alz; rig.shR.rotation.z = c.arz;
+        rig.body.rotation.x = c.lean; rig.body.rotation.y = c.twist; rig.body.position.y = c.bob; rig.neck.rotation.x = -c.head;
+      };
+      animatable(e); return e;
+    };
+    // ---- модели glTF: в «Студии» — встроенные (скрипт с нашего адреса кладёт их в window.__UB_MODELS), в библиотеке — UB.loadModel ----
+    var gltfs = {};
+    var Loader = function () { return T.GLTFLoader || window.GLTFLoader; };
+    var cloneSkinned = function (o) { var SU = T.SkeletonUtils || window.SkeletonUtils; return SU && SU.clone ? SU.clone(o) : o.clone(true); };
+    var modelRec = function (name) { return gltfs[name] || (gltfs[name] = { gltf: null, waiting: [], failed: false }); };
+    var modelReady = function (rec, g) { rec.gltf = g; rec.waiting.forEach(function (f) { f(g); }); rec.waiting = []; };
+    var modelFailed = function (rec, name, err) { rec.failed = true; rec.waiting.forEach(function (f) { f(null); }); rec.waiting = []; console.warn('model ' + name + ': ' + (err && err.message || err)); };
+    UB.loadModel = function (name, url) {
+      var L = Loader(), rec = modelRec(name); if (!L) return modelFailed(rec, name, 'GLTFLoader is not loaded');
+      pending++;
+      new L().load(url, function (g) { pending--; modelReady(rec, g); }, undefined, function (err) { pending--; modelFailed(rec, name, err); });
+    };
+    (function () {
+      var M = window.__UB_MODELS || {}, L = Loader();
+      Object.keys(M).forEach(function (name) {
+        var rec = modelRec(name); if (!L) return modelFailed(rec, name, 'GLTFLoader is not loaded');
+        try {
+          var bin = atob(M[name]), buf = new Uint8Array(bin.length); for (var i = 0; i < bin.length; i++) buf[i] = bin.charCodeAt(i);
+          pending++;
+          new L().parse(buf.buffer, '', function (g) { pending--; modelReady(rec, g); }, function (err) { pending--; modelFailed(rec, name, err); });
+        } catch (err) { modelFailed(rec, name, err); }
+      });
+    })();
+    // габариты с учётом костей: у модели со скелетом геометрия хранится в «позе привязки» (часто в сантиметрах)
+    var boundsOf = function (obj) { obj.updateMatrixWorld(true); obj.traverse(function (m) { if (m.isSkinnedMesh) m.boundingBox = null; }); return new T.Box3().setFromObject(obj); };
+    var clipLen = function (e, name) { var a = e._actions && findClip(e, name); return a ? a.getClip().duration : 0; };
+    var findClip = function (e, name) {
+      var n = String(name).toLowerCase(), names = Object.keys(e._actions || {}), exact = names.filter(function (k) { return k.toLowerCase() === n; })[0];
+      if (exact) return e._actions[exact];
+      var alias = { idle: /idle|stand/i, walk: /^walk(?!.*jump)|walking/i, run: /run/i, jump: /jump/i, wave: /wave/i, dance: /dance/i, cheer: /yes|thumbs|cheer|victory/i, hit: /hit|punch|no$/i };
+      var re = alias[n] || new RegExp(n.replace(/[^a-z0-9]/gi, ''), 'i');
+      var k = names.filter(function (x) { return re.test(x); })[0];
+      return k ? e._actions[k] : null;
+    };
+    // UB.model3d('robot', { x, z, h: 2, rotY, solid, turn }) — объект мира: хитбокс по размерам модели (рост h, по умолчанию 2 м)
+    UB.model3d = function (name, o) {
+      o = Object.assign({}, o || {});
+      var want = o.h || 2;
+      var e = UB.spawn({ shape: 'model', x: o.x, z: o.z, y: o.y, w: o.w || want * 0.5, h: want, d: o.d || want * 0.5, rotY: o.rotY, solid: o.solid, data: o.data });
+      e.modelName = name; e.anims = []; e._t = 0;
+      var attach = function (g) {
+        if (ents.indexOf(e) < 0) return;   // объект уже убрали
+        var root;
+        if (!g) { root = new T.Mesh(new T.CapsuleGeometry(want * 0.22, want * 0.5, 4, 10), new T.MeshLambertMaterial({ color: color(o.color || '#b388ff') })); root.position.y = 0; root.castShadow = true; e.mesh.add(root); return; }
+        root = cloneSkinned(g.scene);
+        root.traverse(function (m) { if (m.isMesh) { m.castShadow = o.shadow !== false; m.receiveShadow = true; m.frustumCulled = false; } });
+        var inner = new T.Group(); inner.add(root); inner.rotation.y = o.turn || 0;
+        var bb = boundsOf(inner), sz = bb.getSize(new T.Vector3());
+        var k = o.scale || want / (sz.y || 1); inner.scale.setScalar(k);
+        bb = boundsOf(inner); var cx = (bb.min.x + bb.max.x) / 2, cz = (bb.min.z + bb.max.z) / 2;
+        e.h = bb.max.y - bb.min.y; e.w = Math.max(0.3, bb.max.x - bb.min.x); e.d = Math.max(0.3, bb.max.z - bb.min.z);
+        if (o.y == null) e.y = e.h / 2;
+        inner.position.set(-cx, -bb.min.y - e.h / 2, -cz);
+        e.mesh.add(inner);
+        if (g.animations && g.animations.length) {
+          e._mixer = new T.AnimationMixer(root); e._actions = {};
+          g.animations.forEach(function (clip) { e._actions[clip.name] = e._mixer.clipAction(clip); e.anims.push(clip.name); });
+        }
+      };
+      var rec = gltfs[name];
+      if (rec && rec.gltf) attach(rec.gltf);
+      else if (rec && !rec.failed) rec.waiting.push(attach);
+      else attach(null);   // такой модели нет — простая фигура вместо неё, игра не ломается
+      e._animate = function (dt) {
+        var want2 = autoAnim(e, dt); if (!e._mixer) return;
+        var act = findClip(e, want2) || findClip(e, 'idle');
+        if (act && act !== e._act) {
+          act.reset(); act.setLoop(e._once ? T.LoopOnce : T.LoopRepeat, Infinity); act.clampWhenFinished = !!e._once; act.play();
+          if (e._act) e._act.crossFadeTo(act, 0.25, false);
+          e._act = act;
+        }
+        var sp = 1; if (act && (want2 === 'walk' || want2 === 'run')) sp = Math.max(0.6, Math.min(1.8, e._v / (want2 === 'run' ? 7 : 3) / (e.h / 2)));
+        e._mixer.update(dt * sp);
+      };
+      animatable(e); return e;
+    };
     UB.label3d = function (text, x, y, z, o) { o = Object.assign({}, o || {}); o.shape = 'label'; o.text = text; o.x = x; o.y = y; o.z = z; return UB.spawn(o); };
     // точка мира → координаты 2D-слоя (для надписей и полосок над объектами в draw); visible = false — за камерой
     UB.toScreen3d = function (x, y, z) {
@@ -686,22 +924,504 @@
     // Воксели — мир из кубов, как в Minecraft: тысячи кубов одной отрисовкой (InstancedMesh), дёшево даже на слабом ноутбуке.
     // list: [{ x, y, z, c }] — центр куба и цвет; o.size — ребро (м). Возвращает { remove() }; UB.clear3d тоже убирает.
     var vox = [];
+    // ---- блоки «Мира школы» (общий пакет @upbilim/blocks): тот же каталог и те же пиксельные текстуры, что в мире ----
+    var BLOCK_DEFS = [{"id":0,"key":"air","top":"#000","side":"#000","solid":false,"clear":true,"glow":false,"cross":false},{"id":1,"key":"grass","top":"#6FBF4B","side":"#8B6A4E","solid":true,"clear":false,"glow":false,"cross":false},{"id":2,"key":"dirt","top":"#8B6A4E","side":"#8B6A4E","solid":true,"clear":false,"glow":false,"cross":false},{"id":3,"key":"stone","top":"#9AA0A6","side":"#8C9298","solid":true,"clear":false,"glow":false,"cross":false},{"id":4,"key":"sand","top":"#E9D9A6","side":"#E3D29B","solid":true,"clear":false,"glow":false,"cross":false},{"id":5,"key":"planks","top":"#C49A6C","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false},{"id":6,"key":"log","top":"#C9A77A","side":"#7A5536","solid":true,"clear":false,"glow":false,"cross":false},{"id":7,"key":"leaves","top":"#3F9E4F","side":"#3A9148","solid":true,"clear":false,"glow":false,"cross":false},{"id":8,"key":"white","top":"#F4F1EC","side":"#EAE6DF","solid":true,"clear":false,"glow":false,"cross":false},{"id":9,"key":"path","top":"#B8AE9C","side":"#A89E8B","solid":true,"clear":false,"glow":false,"cross":false},{"id":10,"key":"brick","top":"#B5533C","side":"#A94B35","solid":true,"clear":false,"glow":false,"cross":false},{"id":11,"key":"glass","top":"#CFE8FB","side":"#CFE8FB","solid":true,"clear":true,"glow":false,"cross":false},{"id":12,"key":"purple","top":"#AF58EA","side":"#9E4BD6","solid":true,"clear":false,"glow":false,"cross":false},{"id":13,"key":"yellow","top":"#F2C94C","side":"#E6BB3C","solid":true,"clear":false,"glow":false,"cross":false},{"id":14,"key":"blue","top":"#2F80ED","side":"#276FD1","solid":true,"clear":false,"glow":false,"cross":false},{"id":15,"key":"red","top":"#E8484A","side":"#D23E40","solid":true,"clear":false,"glow":false,"cross":false},{"id":16,"key":"green","top":"#27AE60","side":"#219653","solid":true,"clear":false,"glow":false,"cross":false},{"id":17,"key":"black","top":"#2E2A33","side":"#27232C","solid":true,"clear":false,"glow":false,"cross":false},{"id":18,"key":"books","top":"#C49A6C","side":"#8C5A3C","solid":true,"clear":false,"glow":false,"cross":false},{"id":19,"key":"water","top":"#5AA9E6","side":"#4F9BD9","solid":false,"clear":true,"glow":false,"cross":false},{"id":20,"key":"flowers","top":"#F0617A","side":"#6FBF4B","solid":false,"clear":false,"glow":false,"cross":true},{"id":21,"key":"lamp","top":"#FFE58A","side":"#FFD95A","solid":true,"clear":false,"glow":true,"cross":false},{"id":22,"key":"gold","top":"#F5B301","side":"#E0A300","solid":true,"clear":false,"glow":false,"cross":false},{"id":23,"key":"bedrock","top":"#4A4F57","side":"#4A4F57","solid":true,"clear":false,"glow":false,"cross":false},{"id":24,"key":"school","top":"#F2C94C","side":"#EAD9A0","solid":true,"clear":false,"glow":false,"cross":false},{"id":25,"key":"tallgrass","top":"#5DAE3E","side":"#5DAE3E","solid":false,"clear":false,"glow":false,"cross":true},{"id":26,"key":"cobble","top":"#8A8F95","side":"#8A8F95","solid":true,"clear":false,"glow":false,"cross":false},{"id":27,"key":"sandstone","top":"#E3CB8F","side":"#D9BE7E","solid":true,"clear":false,"glow":false,"cross":false},{"id":28,"key":"snow","top":"#FBFDFF","side":"#EEF4FA","solid":true,"clear":false,"glow":false,"cross":false},{"id":29,"key":"orange","top":"#F2994A","side":"#E0873A","solid":true,"clear":false,"glow":false,"cross":false},{"id":30,"key":"pink","top":"#F497C0","side":"#E585B0","solid":true,"clear":false,"glow":false,"cross":false},{"id":31,"key":"ice","top":"#A9D8F5","side":"#9CCDEE","solid":true,"clear":true,"glow":false,"cross":false},{"id":32,"key":"torch","top":"#FFB547","side":"#8B6A4E","solid":false,"clear":false,"glow":true,"cross":true},{"id":33,"key":"start","top":"#27AE60","side":"#219653","solid":true,"clear":false,"glow":true,"cross":false},{"id":34,"key":"finish","top":"#FFFFFF","side":"#27221A","solid":true,"clear":false,"glow":true,"cross":false},{"id":35,"key":"checkpoint","top":"#F2C94C","side":"#E0A300","solid":true,"clear":false,"glow":false,"cross":false},{"id":36,"key":"lava","top":"#FF6A1A","side":"#E24A0E","solid":true,"clear":false,"glow":true,"cross":false},{"id":37,"key":"bounce","top":"#7ED957","side":"#5BBF3A","solid":true,"clear":false,"glow":false,"cross":false},{"id":38,"key":"question","top":"#8E44D6","side":"#7B35C1","solid":true,"clear":false,"glow":true,"cross":false},{"id":39,"key":"lift","top":"#A7B3C2","side":"#8794A5","solid":true,"clear":false,"glow":false,"cross":false},{"id":40,"key":"door","top":"#B98C5C","side":"#A0703F","solid":true,"clear":false,"glow":false,"cross":false},{"id":41,"key":"button","top":"#E8484A","side":"#9AA0A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":42,"key":"lever","top":"#8A8F95","side":"#8A8F95","solid":true,"clear":false,"glow":false,"cross":false},{"id":43,"key":"leverOn","top":"#27AE60","side":"#8A8F95","solid":true,"clear":false,"glow":true,"cross":false},{"id":44,"key":"chair","top":"#C44B4B","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false},{"id":45,"key":"stove","top":"#2E2A33","side":"#DDE1E6","solid":true,"clear":false,"glow":false,"cross":false},{"id":46,"key":"fridge","top":"#F4F6F8","side":"#E9EDF1","solid":true,"clear":false,"glow":false,"cross":false},{"id":47,"key":"sink","top":"#D9D2C5","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":48,"key":"counter","top":"#D9D2C5","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":49,"key":"wallCabinet","top":"#8DB497","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":50,"key":"table","top":"#C49A6C","side":"#A87B4F","solid":true,"clear":false,"glow":false,"cross":false},{"id":51,"key":"tiles","top":"#F7F8FA","side":"#F7F8FA","solid":true,"clear":false,"glow":false,"cross":false},{"id":52,"key":"checker","top":"#2E2A33","side":"#F4F1EC","solid":true,"clear":false,"glow":false,"cross":false},{"id":53,"key":"asphalt","top":"#46494F","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":54,"key":"roadWhite","top":"#F2F2EE","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":55,"key":"roadYellow","top":"#F2C230","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":56,"key":"sidewalk","top":"#C9C6BF","side":"#B3AFA7","solid":true,"clear":false,"glow":false,"cross":false},{"id":57,"key":"bikeLane","top":"#B8574A","side":"#9C4A3F","solid":true,"clear":false,"glow":false,"cross":false}];
+    // текст функции из пакета: загрузчики TypeScript (tsx, esbuild с keepNames) вставляют в него вызовы __name — здесь она ничего не делает
+    var __name = function (t) { return t; };
+    var paintBlockTiles = function paintBlockTiles(blocks                                                                       , cols        , T        , d                   , width        )       {
+                                      
+  const hex = (h        )      => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
+  const mul = (c     , k        )      => [c[0] * k, c[1] * k, c[2] * k];
+
+  // детерминированный генератор: одна и та же плитка — один и тот же узор
+  function rng(seed        ) {
+    let a = seed >>> 0;
+    return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
+  }
+
+                                        
+                                                                                                                                              
+
+  function paint(t      , b                                                        , face      ) {
+    const S = 16, top = hex(b.top), side = hex(b.side), base = face === 'top' ? top : side, { set, fill, r } = t;
+    const wood = (c     ) => {                        // доски: полосы по 4 пикселя, стыки, волокна
+      fill(c, 0.08);
+      for (let y = 0; y < S; y++) { if (y % 4 === 3) for (let x = 0; x < S; x++) set(x, y, mul(c, 0.72)); }
+      for (let row = 0; row < 4; row++) { const sx = Math.floor(r() * S); for (let y = row * 4; y < row * 4 + 3; y++) set(sx, y, mul(c, 0.8)); }
+    };
+    switch (b.key) {
+      case 'grass':
+        if (face === 'top') { fill(top, 0.22); for (let i = 0; i < 18; i++) set(r() * S | 0, r() * S | 0, mul(top, 0.8)); }
+        else if (face === 'side') {
+          fill(side, 0.25);
+          for (let x = 0; x < S; x++) { const h = 3 + (r() < 0.5 ? 1 : 0) + (r() < 0.2 ? 1 : 0); for (let y = 0; y < h; y++) set(x, y, mul(top, 0.9 + r() * 0.2)); }
+        } else fill(side, 0.25);
+        break;
+      case 'dirt': fill(base, 0.28); for (let i = 0; i < 10; i++) set(r() * S | 0, r() * S | 0, mul(base, 0.7)); break;
+      case 'stone': case 'bedrock':
+        fill(base, b.key === 'bedrock' ? 0.4 : 0.16);
+        for (let i = 0; i < 6; i++) { let x = r() * S | 0, y = r() * S | 0; for (let k = 0; k < 4; k++) { set(x, y, mul(base, 0.78)); x += r() < 0.5 ? 1 : 0; y += r() < 0.5 ? 1 : -1; } }
+        break;
+      case 'cobble': {
+        fill(base, 0.1);
+        // камни: сетка 4×4 со сдвигом, у каждого свой тон, между ними тёмные швы
+        for (let cy = 0; cy < 4; cy++) for (let cx = 0; cx < 4; cx++) {
+          const k = 0.85 + r() * 0.3, ox = cy % 2 ? 2 : 0;
+          for (let y = cy * 4; y < cy * 4 + 4; y++) for (let x = cx * 4; x < cx * 4 + 4; x++) {
+            const edge = y === cy * 4 || x === cx * 4;
+            set((x + ox) % S, y, edge ? mul(base, 0.6) : mul(base, k * (0.95 + r() * 0.1)));
+          }
+        }
+        break;
+      }
+      case 'sand': case 'snow': fill(base, b.key === 'snow' ? 0.04 : 0.12); if (b.key === 'snow') for (let i = 0; i < 6; i++) set(r() * S | 0, r() * S | 0, [220, 232, 245]); break;
+      case 'sandstone':
+        fill(base, 0.08);
+        for (let x = 0; x < S; x++) { set(x, 0, mul(base, 1.08)); set(x, 5, mul(base, 0.85)); set(x, 10, mul(base, 0.88)); set(x, 15, mul(base, 0.82)); }
+        break;
+      case 'planks': wood(base); break;
+      case 'log':
+        if (face === 'side') { fill(side, 0.1); for (let x = 0; x < S; x++) { const k = 0.8 + ((x * 7) % 5) / 12; for (let y = 0; y < S; y++) if (r() < 0.8) set(x, y, mul(side, k)); } }
+        else { for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)); set(x, y, d > 6.5 ? side : mul(top, (Math.floor(d) % 2 ? 0.86 : 1) * (0.96 + r() * 0.08))); } }
+        break;
+      case 'leaves': fill(base, 0.3); for (let i = 0; i < 26; i++) set(r() * S | 0, r() * S | 0, mul(base, 0.6)); for (let i = 0; i < 10; i++) set(r() * S | 0, r() * S | 0, mul(base, 1.2)); break;
+      case 'path': fill(base, 0.18); for (let i = 0; i < 14; i++) { const x = r() * S | 0, y = r() * S | 0, c = mul(base, 0.8 + r() * 0.35); set(x, y, c); set(x + 1, y, c); } break;
+      case 'brick': {
+        const mortar      = [214, 205, 194];
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          const row = y >> 2, ox = row % 2 ? 4 : 0;
+          set(x, y, y % 4 === 3 || (x + ox) % 8 === 7 ? mortar : mul(base, 0.9 + r() * 0.18));
+        }
+        break;
+      }
+      case 'glass': case 'ice': {
+        const ice = b.key === 'ice';
+        fill(base, ice ? 0.08 : 0.02, ice ? 205 : 60);
+        if (!ice) for (let i = 0; i < S; i++) { set(i, 0, [255, 255, 255], 210); set(i, S - 1, [255, 255, 255], 210); set(0, i, [255, 255, 255], 210); set(S - 1, i, [255, 255, 255], 210); }
+        for (let i = 0; i < 4; i++) { set(3 + i, 6 - i, [255, 255, 255], 190); set(8 + i, 12 - i, [255, 255, 255], 160); }
+        break;
+      }
+      case 'water': fill(base, 0.08, 170); for (let y = 2; y < S; y += 5) for (let x = 0; x < S; x++) if ((x + y) % 7 < 3) set(x, y, mul(base, 1.18), 170); break;
+      case 'books':
+        if (face !== 'side') { wood(top); break; }
+        wood(hex('#B98C5C'));
+        for (const shelf of [1, 9]) {
+          let x = 1;
+          while (x < S - 1) {
+            const w = r() < 0.7 ? 2 : 1, h = 5 + (r() * 2 | 0), c = hex(['#AF58EA', '#2F80ED', '#E8484A', '#27AE60', '#F2C94C', '#F4F1EC'][r() * 6 | 0] );
+            for (let dx = 0; dx < w && x + dx < S - 1; dx++) for (let y = shelf + 6 - h; y < shelf + 6; y++) set(x + dx, y, mul(c, dx ? 0.85 : 1));
+            x += w;
+          }
+        }
+        break;
+      case 'lamp': case 'gold': {
+        const lamp = b.key === 'lamp';
+        fill(base, lamp ? 0.06 : 0.1);
+        for (let i = 0; i < S; i++) {
+          set(i, 0, mul(base, lamp ? 0.7 : 1.15)); set(0, i, mul(base, lamp ? 0.7 : 1.15));
+          set(i, S - 1, mul(base, 0.7)); set(S - 1, i, mul(base, 0.7));
+        }
+        if (lamp) for (let i = 2; i < S - 2; i++) { set(i, 7, [255, 250, 225]); set(7, i, [255, 250, 225]); }
+        else for (let i = 0; i < 5; i++) set(2 + i, 2, [255, 244, 190]);
+        break;
+      }
+      case 'white': case 'school': fill(base, 0.05); if (b.key === 'school') for (let x = 0; x < S; x++) set(x, 7, mul(base, 0.92)); break;
+      case 'flowers': {
+        // стебли и листья, сверху цветки цвета блока с жёлтой серединкой
+        for (const [fx, fy] of [[4, 4], [11, 6], [7, 9]]         ) {
+          for (let y = fy + 1; y < S; y++) set(fx, y, hex('#3F9E4F'));
+          set(fx - 1, fy + 5, hex('#5DAE3E')); set(fx + 1, fy + 7, hex('#5DAE3E'));
+          for (const [dx, dy] of [[0, -1], [0, 1], [-1, 0], [1, 0]]         ) set(fx + dx, fy + dy, top);
+          set(fx, fy, hex('#F2C94C'));
+        }
+        break;
+      }
+      case 'tallgrass':
+        for (let i = 0; i < 9; i++) {
+          let x = 1 + (r() * 14 | 0);
+          const h = 6 + (r() * 8 | 0), lean = r() < 0.5 ? -1 : 1;
+          for (let k = 0; k < h; k++) { set(x, S - 1 - k, mul(base, 0.8 + k / h * 0.4)); if (k === (h >> 1)) x += lean; }
+        }
+        break;
+      case 'torch':
+        for (let y = 6; y < S; y++) { set(7, y, hex('#8B6A4E')); set(8, y, hex('#6F5238')); }
+        for (const [x, y, c] of [[7, 5, '#FFD95A'], [8, 5, '#FFD95A'], [7, 4, '#FFB547'], [8, 4, '#FFE58A'], [7, 3, '#FF8A3D'], [8, 3, '#FFB547'], [7, 2, '#FF8A3D']]         ) set(x, y, hex(c));
+        break;
+      case 'start':
+        fill(base, 0.08);
+        if (face === 'top') for (let y = 3; y <= 12; y++) for (let x = 0; x < S; x++) {   // белая стрелка «вперёд»
+          const head = y <= 7 && Math.abs(x - 7.5) <= 7 - y + 3, shaft = y > 7 && Math.abs(x - 7.5) <= 2;
+          if (head || shaft) set(x, y, [255, 255, 255]);
+        } else for (let x = 0; x < S; x++) { set(x, 0, [255, 255, 255]); set(x, S - 1, mul(base, 0.7)); }
+        break;
+      case 'finish':
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) set(x, y, ((x >> 2) + (y >> 2)) % 2 ? [39, 34, 26] : [255, 255, 255]);   // шахматка
+        break;
+      case 'checkpoint':
+        fill(base, 0.08);
+        for (let y = 3; y < 13; y++) set(5, y, [39, 34, 26]);                        // флажок
+        for (let y = 3; y < 7; y++) for (let x = 6; x < 6 + (7 - y) + 4; x++) set(x, y, [175, 88, 234]);
+        break;
+      case 'lava':
+        fill(base, 0.25);
+        for (let i = 0; i < 22; i++) set(r() * S | 0, r() * S | 0, [255, 214, 90]);  // горячие искры
+        for (let i = 0; i < 14; i++) set(r() * S | 0, r() * S | 0, [170, 40, 10]);
+        break;
+      case 'bounce':
+        fill(base, 0.06);
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) { const d = Math.hypot(x - 7.5, y - 7.5); if (face === 'top' && (Math.abs(d - 6) < 0.8 || Math.abs(d - 3) < 0.8)) set(x, y, [255, 255, 255]); }
+        if (face !== 'top') for (let x = 0; x < S; x++) for (const y of [4, 8, 12]) set(x, y, mul(base, 0.8));
+        break;
+      case 'door': {
+        // деревянная дверь: доски, две филёнки, сбоку — латунная ручка
+        wood(base);
+        if (face !== 'top') {
+          for (const [y0, y1] of [[2, 6], [9, 13]]                           ) for (let y = y0; y <= y1; y++) for (let x = 3; x <= 12; x++) {
+            const edge = y === y0 || y === y1 || x === 3 || x === 12;
+            set(x, y, mul(base, edge ? 0.7 : 1.08));
+          }
+          set(13, 8, [242, 201, 76]); set(13, 7, [224, 163, 0]);
+        }
+        break;
+      }
+      case 'button': {
+        // стальная панель с красной круглой кнопкой
+        fill(hex('#9AA0A6'), 0.05);
+        for (let i = 0; i < S; i++) { set(i, 0, [110, 116, 122]); set(i, S - 1, [110, 116, 122]); set(0, i, [110, 116, 122]); set(S - 1, i, [110, 116, 122]); }
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          const d = Math.hypot(x - 7.5, y - 7.5);
+          if (d < 4.2) set(x, y, d < 2 ? [255, 130, 120] : hex('#E8484A'));
+          else if (d < 5) set(x, y, [70, 74, 80]);
+        }
+        break;
+      }
+      case 'lever': case 'leverOn': {
+        // булыжное основание и ручка: выключен — наклон влево, включён — вправо, с зелёным набалдашником
+        const on = b.key === 'leverOn';
+        fill(hex('#8A8F95'), 0.14);
+        if (face !== 'bottom') for (let i = 0; i < 9; i++) {
+          const x = Math.round(7.5 + (on ? 1 : -1) * i * 0.45), y = 13 - i;
+          set(x, y, [111, 82, 56]); set(x + 1, y, [139, 106, 78]);
+          if (i === 8) for (const [dx, dy] of [[0, 0], [1, 0], [0, -1], [1, -1]]         ) set(x + dx, y + dy - 1, on ? [39, 174, 96] : [206, 40, 40]);
+        }
+        break;
+      }
+      case 'chair': {
+        // стул: сверху — красная подушка с кантом, сбоку — деревянные ножки и сиденье
+        if (face === 'top') {
+          fill(base, 0.06);
+          for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.75)); set(i, S - 1, mul(base, 0.75)); set(0, i, mul(base, 0.75)); set(S - 1, i, mul(base, 0.75)); }
+          for (const [x, y] of [[4, 4], [11, 4], [4, 11], [11, 11]]         ) set(x, y, mul(base, 0.8));
+        } else {
+          fill(mul(hex('#8B6A4E'), 0.55), 0.05);                                // между ножками — тень под сиденьем
+          for (let y = 0; y < 5; y++) for (let x = 0; x < S; x++) set(x, y, y < 3 ? hex(b.top) : side);   // сиденье с подушкой
+          for (let y = 5; y < S; y++) for (const x of [1, 2, 13, 14]) set(x, y, mul(side, 0.8));   // ножки
+        }
+        break;
+      }
+      /* ---------------------------------- кухня ---------------------------------- */
+      case 'stove': {
+        if (face === 'top') {
+          // стеклокерамика: четыре конфорки-кольца и блик
+          fill(base, 0.04);
+          for (const [cx, cy] of [[4, 4], [11, 4], [4, 11], [11, 11]]         ) for (let y = cy - 4; y <= cy + 4; y++) for (let x = cx - 4; x <= cx + 4; x++) {
+            const d = Math.hypot(x - cx + 0.5, y - cy + 0.5);
+            if (d > 1.9 && d < 3.1) set(x, y, [96, 90, 104]); else if (d <= 1.1) set(x, y, [74, 68, 80]);
+          }
+          for (let i = 0; i < 4; i++) set(13 - i, 1 + i, [88, 84, 96]);
+          for (let i = 0; i < S; i++) { set(i, 0, [22, 20, 26]); set(i, S - 1, [22, 20, 26]); set(0, i, [22, 20, 26]); set(S - 1, i, [22, 20, 26]); }
+        } else {
+          // сталь: край варочной панели, ручки-регуляторы, дверца духовки со стеклом и ручкой
+          fill(side, 0.03);
+          for (let x = 0; x < S; x++) { set(x, 0, hex(b.top)); set(x, 1, mul(side, 0.8)); set(x, S - 1, mul(side, 0.55)); }
+          if (face === 'side') {
+            for (const x of [2, 6, 9, 13]) for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]         ) set(x - 1 + dx, 2 + dy + 1, dx + dy === 0 ? [96, 100, 108] : [58, 60, 66]);
+            for (let y = 6; y <= 14; y++) for (let x = 1; x <= 14; x++) set(x, y, mul(side, y === 6 || y === 14 || x === 1 || x === 14 ? 0.78 : 0.94));
+            for (let x = 4; x <= 11; x++) set(x, 7, [150, 156, 166]);                                  // ручка
+            for (let y = 9; y <= 12; y++) for (let x = 3; x <= 12; x++) set(x, y, y === 9 ? [70, 64, 72] : [44, 40, 48]);   // стекло духовки
+            set(4, 10, [242, 153, 74]); set(5, 10, [242, 153, 74]);                                     // огонёк внутри
+          }
+        }
+        break;
+      }
+      case 'fridge': {
+        // белый холодильник: шов морозилки, две ручки, ножки; сверху — решётка
+        fill(base, 0.03);
+        for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.9)); set(0, i, mul(base, 0.92)); set(S - 1, i, mul(base, 0.88)); }
+        if (face === 'top') for (let y = 5; y <= 10; y += 2) for (let x = 3; x <= 12; x++) set(x, y, mul(base, 0.82));
+        else if (face === 'side') {
+          for (let x = 1; x < S - 1; x++) set(x, 5, mul(base, 0.72));
+          for (const [y0, y1] of [[1, 3], [7, 12]]         ) for (let y = y0; y <= y1; y++) { set(12, y, [168, 174, 184]); set(13, y, [140, 146, 156]); }
+          for (let x = 0; x < S; x++) set(x, S - 1, x < 2 || x > 13 ? [90, 94, 100] : mul(base, 0.7));
+        }
+        break;
+      }
+      case 'sink': case 'counter': {
+        if (face === 'top') {
+          // столешница «под камень»: мелкие крапинки
+          fill(top, 0.04);
+          for (let i = 0; i < 22; i++) set(r() * S | 0, r() * S | 0, mul(top, r() < 0.5 ? 0.86 : 1.06));
+          for (let i = 0; i < S; i++) { set(i, 0, mul(top, 0.9)); set(i, S - 1, mul(top, 0.9)); set(0, i, mul(top, 0.9)); set(S - 1, i, mul(top, 0.9)); }
+          if (b.key === 'sink') {
+            // стальная мойка со сливом и кран у дальнего края
+            for (let y = 5; y <= 13; y++) for (let x = 3; x <= 12; x++) set(x, y, y === 5 || y === 13 || x === 3 || x === 12 ? [150, 156, 166] : [196, 202, 210]);
+            for (const [x, y] of [[7, 9], [8, 9], [7, 10], [8, 10]]         ) set(x, y, [108, 114, 124]);
+            for (let y = 1; y <= 5; y++) { set(7, y, [166, 172, 182]); set(8, y, [140, 146, 156]); }
+            set(6, 2, [120, 126, 136]); set(9, 2, [120, 126, 136]);
+          }
+        } else {
+          // шкафчик: кромка столешницы, две дверцы с ручками, цоколь
+          fill(side, 0.04);
+          for (let x = 0; x < S; x++) { set(x, 0, top); set(x, 1, mul(top, 0.8)); set(x, S - 1, mul(side, 0.55)); }
+          if (face === 'side') for (const [x0, x1] of [[1, 7], [8, 14]]                           ) for (let y = 3; y <= 13; y++) for (let x = x0; x <= x1; x++) {
+            set(x, y, mul(side, y === 3 || y === 13 || x === x0 || x === x1 ? 0.8 : 1.04));
+          }
+          if (face === 'side') for (const x of [6, 9]) for (let y = 5; y <= 7; y++) set(x, y, [214, 218, 224]);
+        }
+        break;
+      }
+      case 'wallCabinet': {
+        // навесной шкаф: две дверцы, ручки внизу (тянуть вниз удобно)
+        fill(base, 0.04);
+        for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.8)); set(i, S - 1, mul(base, 0.8)); set(0, i, mul(base, 0.85)); set(S - 1, i, mul(base, 0.85)); }
+        if (face === 'side') {
+          for (let y = 1; y < S - 1; y++) set(7, y, mul(side, 0.72));
+          for (const x of [5, 10]) for (let y = 11; y <= 13; y++) set(x, y, [214, 218, 224]);
+        }
+        break;
+      }
+      case 'table': {
+        if (face === 'top') { wood(top); for (let i = 0; i < S; i++) { set(i, 0, mul(top, 0.8)); set(i, S - 1, mul(top, 0.8)); set(0, i, mul(top, 0.8)); set(S - 1, i, mul(top, 0.8)); } }
+        else {
+          // сбоку: толстая столешница, под ней тень и ножки по краям (как у стула)
+          fill(mul(hex('#8B6A4E'), 0.5), 0.05);
+          if (face === 'side') {
+            for (let y = 0; y < 3; y++) for (let x = 0; x < S; x++) set(x, y, y === 2 ? mul(top, 0.72) : mul(top, 0.95));
+            for (let x = 2; x < S - 2; x++) set(x, 3, mul(side, 0.8));
+            for (let y = 3; y < S; y++) for (const x of [1, 2, 13, 14]) set(x, y, mul(side, x === 2 || x === 14 ? 0.82 : 1));
+          } else for (const [x, y] of [[1, 1], [2, 1], [1, 2], [2, 2], [13, 1], [14, 1], [13, 2], [14, 2], [1, 13], [2, 13], [1, 14], [2, 14], [13, 13], [14, 13], [13, 14], [14, 14]]         ) set(x, y, side);
+        }
+        break;
+      }
+      case 'tiles': {
+        // кафель 4 × 4 с серыми швами; пара плиток чуть голубее
+        fill(base, 0.02);
+        for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) if (r() < 0.18) for (let y = ty * 4; y < ty * 4 + 3; y++) for (let x = tx * 4; x < tx * 4 + 3; x++) set(x, y, [226, 238, 250]);
+        for (let i = 0; i < S; i++) for (const k of [3, 7, 11, 15]) { set(i, k, [200, 205, 212]); set(k, i, [200, 205, 212]); }
+        break;
+      }
+      case 'asphalt': case 'roadWhite': case 'roadYellow': {
+        // асфальт: тёмная крошка; разметка — краска сверху, по бокам асфальт
+        if (face !== 'top' || b.key === 'asphalt') { fill(base, 0.1); for (let i = 0; i < 22; i++) set(r() * S | 0, r() * S | 0, mul(base, r() < 0.5 ? 0.8 : 1.18)); }
+        else { fill(base, 0.04); for (let i = 0; i < 10; i++) set(r() * S | 0, r() * S | 0, mul(base, 0.86)); }
+        break;
+      }
+      case 'bikeLane': {
+        // велодорожка: красная крошка, по краям белая полоса (стыкуется вдоль)
+        fill(base, 0.08); for (let i = 0; i < 16; i++) set(r() * S | 0, r() * S | 0, mul(base, r() < 0.5 ? 0.85 : 1.12));
+        if (face === 'top') for (let i = 0; i < S; i++) { set(i, 0, [236, 232, 226]); set(0, i, [236, 232, 226]); }
+        break;
+      }
+      case 'sidewalk': {
+        // плитка 8 × 8 со швами
+        fill(base, 0.05);
+        for (let i = 0; i < S; i++) for (const k of [7, 15]) { set(i, k, mul(base, 0.78)); set(k, i, mul(base, 0.78)); }
+        break;
+      }
+      case 'checker': {
+        // шахматка 8 × 8: на любой грани и стыкуется с соседними блоками
+        const dark = hex(b.top), light = hex(b.side);
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          const c = ((x >> 3) + (y >> 3)) % 2 ? dark : light;
+          set(x, y, mul(c, 0.97 + r() * 0.05));
+        }
+        break;
+      }
+      case 'lift': {
+        // сверху — стальная плита со стрелками «вверх / вниз», сбоку — двери лифта со швом посередине
+        fill(base, 0.05);
+        for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.8)); set(i, S - 1, mul(base, 0.8)); set(0, i, mul(base, 0.8)); set(S - 1, i, mul(base, 0.8)); }
+        if (face === 'top') {
+          const ink      = [255, 255, 255];
+          for (let k = 0; k < 4; k++) for (let x = 7 - k; x <= 8 + k; x++) { set(x, 2 + k, ink); set(x, 13 - k, ink); }   // стрелки
+        } else for (let y = 1; y < S - 1; y++) { set(7, y, mul(base, 0.62)); set(8, y, mul(base, 1.12)); }
+        break;
+      }
+      case 'question': {
+        // фиолетовая плитка с белым «?»
+        fill(base, 0.06);
+        for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.75)); set(i, S - 1, mul(base, 0.75)); set(0, i, mul(base, 0.75)); set(S - 1, i, mul(base, 0.75)); }
+        const Q = ['.####.', '##..##', '....##', '...##.', '..##..', '..##..', '......', '..##..'];
+        Q.forEach((row, y) => [...row].forEach((ch, x) => { if (ch === '#') set(x + 5, y + 4, [255, 255, 255]); }));
+        break;
+      }
+      default: {
+        // цветные блоки (как шерсть): мягкий шум и еле заметная «ткань»
+        fill(base, 0.08);
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if ((x + y) % 4 === 0 && r() < 0.5) set(x, y, mul(base, 0.92));
+      }
+    }
+  }
+
+  for (const b of blocks) {
+    if (!b.id) continue;
+    for (const face of ['top', 'side', 'bottom']         ) {
+      const tile = b.id * 3 + (face === 'top' ? 0 : face === 'side' ? 1 : 2), ox = (tile % cols) * T, oy = Math.floor(tile / cols) * T;
+      const r = rng(b.id * 131 + (face === 'top' ? 7 : face === 'side' ? 13 : 29));
+      const set = (x        , y        , c     , a = 255) => {
+        x = Math.floor(x); y = Math.floor(y);
+        if (x < 0 || y < 0 || x >= T || y >= T) return;
+        const i = ((oy + y) * width + ox + x) * 4;
+        d[i] = Math.min(255, Math.max(0, c[0])); d[i + 1] = Math.min(255, Math.max(0, c[1])); d[i + 2] = Math.min(255, Math.max(0, c[2])); d[i + 3] = a;
+      };
+      const fill = (c     , amp        , a = 255) => { for (let y = 0; y < T; y++) for (let x = 0; x < T; x++) set(x, y, mul(c, 1 + (r() - 0.5) * amp), a); };
+      paint({ set, fill, r }, b, face);
+    }
+  }
+};
+    var BLOCK_BY = {}; BLOCK_DEFS.forEach(function (b) { BLOCK_BY[b.key] = b; BLOCK_BY[String(b.id)] = b; });
+    UB.blocks = BLOCK_DEFS.filter(function (b) { return b.id; }).map(function (b) { return b.key; });
+    var ATL_C = 16, ATL_T = 16, ATL_R = Math.ceil(BLOCK_DEFS.length * 3 / 16), blockAtlas;
+    // атлас: плитка 0 (у «воздуха» её нет) — белая: по ней красятся цветные кубы без блока в том же меше
+    var getAtlas = function () {
+      if (blockAtlas !== undefined) return blockAtlas;
+      blockAtlas = null;
+      var cv = document.createElement('canvas'); cv.width = ATL_C * ATL_T; cv.height = ATL_R * ATL_T;
+      var g2 = cv.getContext && cv.getContext('2d'), img = g2 && g2.createImageData && g2.createImageData(cv.width, cv.height);
+      if (!img || !img.data) return null;
+      paintBlockTiles(BLOCK_DEFS, ATL_C, ATL_T, img.data, cv.width);
+      for (var y = 0; y < ATL_T; y++) for (var x = 0; x < ATL_T; x++) { var k = (y * cv.width + x) * 4; img.data[k] = img.data[k + 1] = img.data[k + 2] = img.data[k + 3] = 255; }
+      g2.putImageData(img, 0, 0);
+      var tex = new T.CanvasTexture(cv); tex.magFilter = T.NearestFilter; tex.minFilter = T.NearestFilter; tex.generateMipmaps = false; tex.colorSpace = T.SRGBColorSpace;
+      blockAtlas = { canvas: cv, tex: tex };
+      return blockAtlas;
+    };
+    var tileUV = function (tile, u, v) {
+      var col = tile % ATL_C, row = Math.floor(tile / ATL_C), E = 0.01, uu = E + u * (1 - 2 * E), vv = E + v * (1 - 2 * E);
+      return [(col + uu) / ATL_C, 1 - (row + 1 - vv) / ATL_R];
+    };
+    // текстура одной плитки блока для коробок любого размера (повторяется, а не растягивается)
+    var tileTex = {};
+    var blockTileTex = function (b, face, rx, ry) {
+      var key = b.id + ':' + face + ':' + rx + ':' + ry; if (tileTex[key]) return tileTex[key];
+      var A = getAtlas(); if (!A) return null;
+      var base = tileTex[b.id + ':' + face];
+      if (!base) {
+        var t = b.id * 3 + (face === 'top' ? 0 : face === 'side' ? 1 : 2), c = document.createElement('canvas'); c.width = c.height = ATL_T;
+        c.getContext('2d').drawImage(A.canvas, (t % ATL_C) * ATL_T, Math.floor(t / ATL_C) * ATL_T, ATL_T, ATL_T, 0, 0, ATL_T, ATL_T);
+        base = tileTex[b.id + ':' + face] = new T.CanvasTexture(c); base.magFilter = T.NearestFilter; base.minFilter = T.NearestFilter; base.generateMipmaps = false; base.colorSpace = T.SRGBColorSpace;
+        base.wrapS = base.wrapT = T.RepeatWrapping;
+      }
+      var tx = base.clone(); tx.repeat.set(rx, ry); tx.needsUpdate = true; tileTex[key] = tx; return tx;
+    };
+    var blockBoxMats = function (b, w, h, d) {
+      var mk = function (face, rx, ry) { var m = new T.MeshLambertMaterial({ map: blockTileTex(b, face, Math.max(1, Math.round(rx)), Math.max(1, Math.round(ry))), transparent: !!b.clear, opacity: 1, alphaTest: b.clear ? 0 : 0.5 }); if (b.glow) m.emissive = color(b.top).multiplyScalar(0.6); return m; };
+      return [mk('side', d, h), mk('side', d, h), mk('top', w, d), mk('bottom', w, d), mk('side', w, h), mk('side', w, h)];   // +x −x +y −y +z −z
+    };
     UB.voxels3d = function (list, o) {
       if (!scene) throw new Error('call UB.create3d first');
-      o = o || {}; var size = o.size || 1, n = Math.min(list.length, 60000);
-      var geo = new T.BoxGeometry(size, size, size), mat = new T.MeshLambertMaterial({ color: 0xffffff });
-      var mesh = new T.InstancedMesh(geo, mat, Math.max(1, n)), m4 = new T.Matrix4(), col = new T.Color();
-      for (var i = 0; i < n; i++) {
-        var v = list[i]; m4.makeTranslation(v.x, v.y, v.z); mesh.setMatrixAt(i, m4);
-        col.set(v.c || '#cccccc'); if (o.jitter !== false) col.offsetHSL(0, 0, (((i * 9301 + 49297) % 233280) / 233280 - 0.5) * 0.07); mesh.setColorAt(i, col);
+      o = o || {}; var size = o.size || 1, n = Math.min(list.length, 60000), hs = size / 2, i;
+      // Сетка: кубы на одной решётке (шаг size) закрывают друг другу грани — рисуем только открытые. Куб вне решётки — целиком.
+      // Мир режем на куски 16×16: куски вне экрана не рисуются. Блоки мира (b: 'grass') — с текстурами мира, растения —
+      // крестиком, стекло / лёд / вода — прозрачные, лампы и факелы светятся; в углах мягкая тень (как в мире школы).
+      var x0 = n ? list[0].x : 0, y0 = n ? list[0].y : 0, z0 = n ? list[0].z : 0, grid = {}, cells = new Array(n), defs = new Array(n), textured = false;
+      for (i = 0; i < n; i++) {
+        var v = list[i], df = v.b != null ? BLOCK_BY[String(v.b)] || null : null; if (df && !df.id) df = null;
+        defs[i] = df; if (df) textured = true;
+        var gx = (v.x - x0) / size, gy = (v.y - y0) / size, gz = (v.z - z0) / size, rx = Math.round(gx), ry = Math.round(gy), rz = Math.round(gz);
+        if (Math.abs(gx - rx) < 0.01 && Math.abs(gy - ry) < 0.01 && Math.abs(gz - rz) < 0.01) {
+          cells[i] = [rx, ry, rz];
+          if (!(df && df.cross)) grid[rx + ',' + ry + ',' + rz] = df && df.clear ? 1000 + df.id : 1;   // 1 — непрозрачный куб
+        }
       }
-      mesh.count = n; mesh.instanceMatrix.needsUpdate = true; if (mesh.instanceColor) mesh.instanceColor.needsUpdate = true;
-      scene.add(mesh);
-      var h = { mesh: mesh, solid: !!o.solid, list: list.slice(0, n), size: size, col: null,
-        remove: function () { if (h.col && pw) pw.removeCollider(h.col, true); h.col = null; scene.remove(mesh); geo.dispose(); mat.dispose(); var k = vox.indexOf(h); if (k >= 0) vox.splice(k, 1); } };
+      var A = textured ? getAtlas() : null;
+      var opq = function (x, y, z) { return grid[x + ',' + y + ',' + z] === 1 ? 1 : 0; };
+      var FACES = [[1, 0, 0, 0, 1, 0, 0, 0, 1], [-1, 0, 0, 0, 0, 1, 0, 1, 0], [0, 1, 0, 0, 0, 1, 1, 0, 0], [0, -1, 0, 1, 0, 0, 0, 0, 1], [0, 0, 1, 1, 0, 0, 0, 1, 0], [0, 0, -1, 0, 1, 0, 1, 0, 0]];
+      var AOV = [0.42, 0.62, 0.8, 1];
+      var chunks = {}, col = new T.Color(), CH = 16 * size;
+      var bufOf = function (w, kind) {
+        var key = Math.floor((w.x - x0) / CH) + ',' + Math.floor((w.z - z0) / CH) + ':' + kind;
+        return chunks[key] || (chunks[key] = { kind: kind, p: [], nm: [], c: [], uv: [], ix: [] });
+      };
+      var quad = function (bf, pts, nrm, cols, uvs, flip) {
+        var base = bf.p.length / 3;
+        for (var q = 0; q < 4; q++) { bf.p.push(pts[q][0], pts[q][1], pts[q][2]); bf.nm.push(nrm[0], nrm[1], nrm[2]); bf.c.push(cols[q][0], cols[q][1], cols[q][2]); bf.uv.push(uvs[q][0], uvs[q][1]); }
+        if (flip) bf.ix.push(base + 1, base + 2, base + 3, base + 1, base + 3, base); else bf.ix.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      };
+      var white = A ? tileUV(0, 0.5, 0.5) : [0, 0];
+      for (i = 0; i < n; i++) {
+        var w = list[i], c = cells[i], df2 = defs[i];
+        var jit = 1 + (((i * 73856093) ^ (i * 19349663)) & 7) / 160 - 0.02;
+        if (df2) col.setRGB(jit, jit, jit); else { col.set(w.c || '#cccccc'); if (o.jitter !== false) col.offsetHSL(0, 0, (((i * 9301 + 49297) % 233280) / 233280 - 0.5) * 0.07); }
+        if (df2 && df2.cross) {
+          // растение: две скрещённые картинки (видны с обеих сторон)
+          var bfc = bufOf(w, df2.glow ? 'glow' : 'cutout'), a = 0.35 * size, t1 = df2.id * 3 + 1, cc = [col.r, col.g, col.b];
+          // каждая картинка — двумя гранями (лицом и спиной), обе освещены как верх блока: иначе обратная сторона была бы тёмной
+          [[-a, -a, a, a], [a, -a, -a, a], [a, a, -a, -a], [-a, a, a, -a]].forEach(function (d4) {
+            quad(bfc, [[w.x + d4[0], w.y - hs, w.z + d4[1]], [w.x + d4[2], w.y - hs, w.z + d4[3]], [w.x + d4[2], w.y + hs, w.z + d4[3]], [w.x + d4[0], w.y + hs, w.z + d4[1]]],
+              [0, 1, 0], [cc, cc, cc, cc], [tileUV(t1, 0, 0), tileUV(t1, 1, 0), tileUV(t1, 1, 1), tileUV(t1, 0, 1)], false);
+          });
+          continue;
+        }
+        var kind = df2 && df2.clear ? 'clear' : df2 && df2.glow ? 'glow' : 'opaque';
+        for (var f = 0; f < 6; f++) {
+          var F = FACES[f];
+          if (c) {
+            var nb = grid[(c[0] + F[0]) + ',' + (c[1] + F[1]) + ',' + (c[2] + F[2])];
+            if (nb === 1) continue;                                   // сосед — непрозрачный куб
+            if (kind === 'clear' && nb === 1000 + df2.id) continue;   // между одинаковым стеклом / водой граней нет
+          }
+          var pts = [], cols = [], uvs = [], ao = [];
+          var tile = df2 ? df2.id * 3 + (F[1] > 0 ? 0 : F[1] < 0 ? 2 : 1) : 0;
+          for (var q = 0; q < 4; q++) {
+            var su = q === 1 || q === 2 ? 1 : -1, sv = q >= 2 ? 1 : -1;
+            var px = w.x + hs * (F[0] + su * F[3] + sv * F[6]), py = w.y + hs * (F[1] + su * F[4] + sv * F[7]), pz = w.z + hs * (F[2] + su * F[5] + sv * F[8]);
+            pts.push([px, py, pz]);
+            var k2 = 3;
+            if (c && kind === 'opaque') {   // мягкая тень в углу: соседи по двум сторонам и по диагонали в слое перед гранью
+              var ox = c[0] + F[0], oy = c[1] + F[1], oz = c[2] + F[2];
+              var s1 = opq(ox + su * F[3], oy + su * F[4], oz + su * F[5]), s2 = opq(ox + sv * F[6], oy + sv * F[7], oz + sv * F[8]);
+              var cn = opq(ox + su * F[3] + sv * F[6], oy + su * F[4] + sv * F[7], oz + su * F[5] + sv * F[8]);
+              k2 = s1 && s2 ? 0 : 3 - s1 - s2 - cn;
+            }
+            ao.push(k2); var sh = AOV[k2]; cols.push([col.r * sh, col.g * sh, col.b * sh]);
+            if (!df2) { uvs.push(white); continue; }
+            // координаты плитки: у боковых граней «верх» плитки — вверх (+y), у верха и низа — по x / z
+            var cx = (px - w.x) / size + 0.5, cy = (py - w.y) / size + 0.5, cz = (pz - w.z) / size + 0.5;
+            var uu = F[0] > 0 ? 1 - cz : F[0] < 0 ? cz : F[2] > 0 ? cx : F[2] < 0 ? 1 - cx : cx, vv2 = F[1] !== 0 ? 1 - cz : cy;
+            uvs.push(tileUV(tile, uu, vv2));
+          }
+          quad(bufOf(w, kind), pts, [F[0], F[1], F[2]], cols, uvs, ao[0] + ao[2] < ao[1] + ao[3]);
+        }
+      }
+      var grp = new T.Group(), mats = {}, geos = [], map = A ? A.tex : null;
+      var matOf = function (kind) {
+        if (mats[kind]) return mats[kind];
+        var opt = { vertexColors: true }; if (map) opt.map = map;
+        if (kind === 'glow') { opt.alphaTest = 0.5; return (mats[kind] = new T.MeshBasicMaterial(opt)); }
+        if (kind === 'cutout') opt.alphaTest = 0.5;
+        if (kind === 'clear') { opt.transparent = true; opt.depthWrite = false; }
+        return (mats[kind] = new T.MeshLambertMaterial(opt));
+      };
+      Object.keys(chunks).forEach(function (k) {
+        var ck = chunks[k]; if (!ck.ix.length) return;
+        var geo = new T.BufferGeometry();
+        geo.setAttribute('position', new T.Float32BufferAttribute(ck.p, 3)); geo.setAttribute('normal', new T.Float32BufferAttribute(ck.nm, 3));
+        geo.setAttribute('color', new T.Float32BufferAttribute(ck.c, 3)); geo.setAttribute('uv', new T.Float32BufferAttribute(ck.uv, 2));
+        geo.setIndex(ck.p.length / 3 > 65000 ? new T.Uint32BufferAttribute(ck.ix, 1) : ck.ix);
+        geo.computeBoundingSphere();
+        var m = new T.Mesh(geo, matOf(ck.kind));
+        m.castShadow = o.shadow !== false && ck.kind !== 'clear' && ck.kind !== 'cutout'; m.receiveShadow = true; if (ck.kind === 'clear') m.renderOrder = 1;
+        grp.add(m); geos.push(geo);
+      });
+      scene.add(grp);
+      // для физики — только твёрдые (сквозь воду, цветы и факелы проходим)
+      var solidList = [], solidCells = {}; for (i = 0; i < n; i++) if (!defs[i] || (defs[i].solid && !defs[i].cross)) { solidList.push(list[i]); if (cells[i]) solidCells[cells[i].join(',')] = 1; }
+      var h = { mesh: grp, solid: !!o.solid, list: solidList, cells: solidCells, o: [x0, y0, z0], size: size, col: null,
+        remove: function () { if (h.col && pw) pw.removeCollider(h.col, true); h.col = null; scene.remove(grp); geos.forEach(function (g3) { g3.dispose(); }); Object.keys(mats).forEach(function (k) { mats[k].dispose(); }); var k = vox.indexOf(h); if (k >= 0) vox.splice(k, 1); } };
       vox.push(h); if (pw && h.solid) voxCollider(h); return h;
     };
-    UB.clear3d = function () { ents.slice().forEach(function (e) { if (!e.ground) e.remove(); }); vox.slice().forEach(function (v) { v.remove(); }); players.forEach(unplayer); players = []; fx.forEach(function (f) { scene.remove(f.m); }); fx = []; };
+    UB.clear3d = function () { ents.slice().forEach(function (e) { if (!e.ground) e.remove(); }); vox.slice().forEach(function (v) { v.remove(); }); players.forEach(unplayer); players = []; fx.forEach(function (f) { scene.remove(f.m); }); fx = []; effects.slice().forEach(function (f) { f.remove(); }); loops.slice().forEach(function (l) { l.stop(); }); };
     UB.hit3d = function (a, b) { return Math.abs(a.x - b.x) * 2 < a.w + b.w && Math.abs(a.y - b.y) * 2 < a.h + b.h && Math.abs(a.z - b.z) * 2 < a.d + b.d; };
     UB.dist3d = function (a, b) { return Math.hypot(a.x - b.x, a.y - b.y, a.z - b.z); };
     UB.camera3d = function (o) {
@@ -725,19 +1445,272 @@
     UB.look = { yaw: 0, pitch: 0 };
     // угол обзора камеры (градусы): приближение прицела и т. п.
     UB.fov3d = function (deg) { if (camera && deg && Math.abs(camera.fov - deg) > 0.01) { camera.fov = deg; camera.updateProjectionMatrix(); } };
-    UB.burst3d = function (x, y, z, o) {
-      o = o || {}; var n = Math.min(o.count || 14, 40);
-      for (var i = 0; i < n; i++) {
-        var m = new T.Mesh(new T.BoxGeometry(0.18, 0.18, 0.18), new T.MeshBasicMaterial({ color: color(o.color || UB.pick(['#ffd166', '#ef476f', '#06d6a0', '#4cc9f0'])) }));
-        m.position.set(x, y, z); scene.add(m);
-        fx.push({ m: m, vx: rand(-4, 4), vy: rand(2, 7), vz: rand(-4, 4), t: 0, life: rand(0.5, 1) });
+    // ==== Звук в пространстве: «уши» (AudioListener) — на герое (цели камеры), повёрнуты как камера; источники — PannerNode ====
+    // Фоновые звуки мира — без файлов: при первом использовании синтезируем петлю (шум + фильтры + щелчки), склейка петли без щелчка.
+    var mkPanner = function (x, y, z, ref) {
+      var p = ac.createPanner();
+      p.panningModel = touch ? 'equalpower' : 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = ref || 3; p.maxDistance = 80; p.rolloffFactor = 1.3;
+      setPos(p, x, y, z); return p;
+    };
+    var setPos = function (p, x, y, z) { if (p.positionX) { p.positionX.value = x; p.positionY.value = y; p.positionZ.value = z; } else p.setPosition(x, y, z); };
+    spatial = function (o) { var at = o.at || o; return mkPanner(at.x || 0, at.y == null ? 1 : at.y, at.z || 0, o.ref); };
+    var LOOPS = {}, loops = [];
+    var bake = function (kind) {
+      if (LOOPS[kind]) return LOOPS[kind];
+      var sr = ac.sampleRate, len = { wind: 4, waves: 6, birds: 4, engine: 1, hum: 1, magic: 2 }[kind] || 2, N = Math.floor(sr * len), F = Math.floor(sr * 0.08);
+      var a = new Float32Array(N + F), i, b0 = 0, b1 = 0, br = 0, t;
+      for (i = 0; i < N + F; i++) {
+        var w = Math.random() * 2 - 1; t = i / sr;
+        br = (br + 0.02 * w) / 1.02; b0 = 0.99 * b0 + w * 0.1; b1 = 0.9 * b1 + w * 0.3;   // коричневый, розоватый, мягкий шум
+        if (kind === 'fire') a[i] = br * 2.2 + (Math.random() < 0.0009 ? (Math.random() * 2 - 1) * 0.9 : 0);
+        else if (kind === 'water') a[i] = (b1 * 0.5 + w * 0.05) * (0.75 + 0.25 * Math.sin(t * 7 + Math.sin(t * 3) * 2));
+        else if (kind === 'rain') a[i] = w * 0.22 + b1 * 0.15;
+        else if (kind === 'wind') a[i] = br * 3 * (0.5 + 0.5 * Math.sin(t * Math.PI * 2 / len) * Math.sin(t * 1.7 + 1));
+        else if (kind === 'waves') a[i] = (b0 * 0.9 + w * 0.04) * Math.pow(0.5 + 0.5 * Math.sin(t * Math.PI * 2 / len * 1 - 1.5), 2);
+        else if (kind === 'engine') a[i] = (((t * 55) % 1) * 2 - 1) * 0.3 + (((t * 110) % 1) * 2 - 1) * 0.12 + br * 0.8;
+        else if (kind === 'hum') a[i] = Math.sin(t * Math.PI * 2 * 110) * 0.25 * (0.8 + 0.2 * Math.sin(t * Math.PI * 2 * 4)) + Math.sin(t * Math.PI * 2 * 220) * 0.08;
+        else if (kind === 'magic') a[i] = [880, 1108.5, 1318.5, 1760].reduce(function (sum, f, k) { return sum + Math.sin(t * Math.PI * 2 * f) * 0.05 * (0.5 + 0.5 * Math.sin(t * Math.PI * (2 + k))); }, 0);
+        else if (kind === 'birds') a[i] = 0;
+        else a[i] = w * 0.1;
       }
+      if (kind === 'birds') for (var c = 0; c < 9; c++) {   // щебет: короткие свисты с трелью в случайные моменты
+        var st = Math.floor(Math.random() * (N - sr * 0.4)), f0 = 2200 + Math.random() * 1800, ph = 0;
+        for (i = 0; i < sr * 0.25; i++) { t = i / sr; var f = f0 + Math.sin(t * 90) * 400 - t * 2000; ph += f / sr; a[st + i] += Math.sin(ph * Math.PI * 2) * 0.18 * Math.sin(Math.PI * t / 0.25); }
+      }
+      if (kind === 'fire') for (i = 1; i < N + F; i++) a[i] = a[i] * 0.6 + a[i - 1] * 0.4;   // треск мягче
+      for (i = 0; i < F; i++) a[i] = a[i] * (i / F) + a[N + i] * (1 - i / F);   // петля без щелчка на стыке
+      var buf = ac.createBuffer(1, N, sr); buf.getChannelData(0).set(a.subarray(0, N));
+      return (LOOPS[kind] = buf);
+    };
+    // UB.sound3d('fire', { x, y, z | follow: e, volume }) — фоновый звук мира (без x/z/follow — просто фоном, например дождь)
+    UB.sound3d = function (kind, o) {
+      o = o || {};
+      var h = { kind: kind, x: o.x || 0, y: o.y == null ? 1 : o.y, z: o.z || 0, follow: o.follow || null, vol: o.volume == null ? 1 : o.volume, src: null, gain: null, pan: null, dead: false,
+        positional: o.follow != null || o.x != null || o.z != null };
+      h.start = function () {
+        if (h.src || h.dead || !ac || loops.filter(function (l) { return l.src; }).length >= 8) return;   // не больше 8 петель сразу
+        h.src = ac.createBufferSource(); h.src.buffer = bake(kind); h.src.loop = true;
+        h.gain = ac.createGain(); h.gain.gain.setValueAtTime(0, ac.currentTime); h.gain.gain.linearRampToValueAtTime(0.35 * h.vol, ac.currentTime + 0.4);
+        h.src.connect(h.gain);
+        if (h.positional) { h.pan = mkPanner(h.x, h.y, h.z, o.ref || 3); h.gain.connect(h.pan); h.pan.connect(ac.destination); } else h.gain.connect(ac.destination);
+        h.src.start(ac.currentTime, Math.random() * h.src.buffer.duration);
+      };
+      h.volume = function (v) { h.vol = v; if (h.gain) h.gain.gain.setTargetAtTime(0.35 * v, ac.currentTime, 0.1); return h; };
+      h.stop = function () {
+        if (h.dead) return; h.dead = true; var k = loops.indexOf(h); if (k >= 0) loops.splice(k, 1);
+        if (h.src) { var s0 = h.src, g0 = h.gain, p0 = h.pan; g0.gain.setTargetAtTime(0, ac.currentTime, 0.12); setTimeout(function () { try { s0.stop(); s0.disconnect(); g0.disconnect(); if (p0) p0.disconnect(); } catch (e) {} }, 800); }
+      };
+      h.remove = h.stop;
+      loops.push(h); h.start(); return h;
+    };
+    // каждый кадр: уши за героем, источники за своими объектами; звук ещё не разрешён браузером — петли стартуют после первого касания
+    var stepAudio = function () {
+      if (!ac || !camera) return;
+      var L = ac.listener, t = cam && cam.target, px = t ? t.x : camera.position.x, py = t ? t.y + 0.6 : camera.position.y, pz = t ? t.z : camera.position.z;
+      var fw = new T.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      if (L.positionX) { L.positionX.value = px; L.positionY.value = py; L.positionZ.value = pz; L.forwardX.value = fw.x; L.forwardY.value = fw.y; L.forwardZ.value = fw.z; L.upX.value = 0; L.upY.value = 1; L.upZ.value = 0; }
+      else { L.setPosition(px, py, pz); L.setOrientation(fw.x, fw.y, fw.z, 0, 1, 0); }
+      for (var i = 0; i < loops.length; i++) {
+        var h = loops[i]; if (!h.src) h.start();
+        if (h.follow) { if (ents.indexOf(h.follow) < 0 && h.follow.mesh) { h.stop(); i--; continue; } h.x = h.follow.x; h.y = h.follow.y; h.z = h.follow.z; }
+        if (h.pan) setPos(h.pan, h.x, h.y, h.z);
+      }
+    };
+    // ==== Пачки неподвижных объектов (автоматически): объект стоит на месте 30 кадров — его рисует общий InstancedMesh
+    // (одна команда рисования на все такие кубы / шары / части деревьев и т. п.); сдвинулся, спрятан, перекрашен — сразу снова свой меш.
+    // Рисует не игра, а движок: игра ничего не замечает (e.x, e.visible, e.setColor работают как раньше).
+    var batches = {}, BATCH_UNIT = null;
+    var batchFor = function (key, geo, srcMat) {
+      var b = batches[key]; if (b && b.free.length) return b;
+      var cap = b ? b.cap * 2 : 32, mat = b ? b.mesh.material : new T.MeshLambertMaterial({ color: 0xffffff, emissive: srcMat && srcMat.emissive ? srcMat.emissive.clone() : 0x000000 });
+      var im = new T.InstancedMesh(b ? b.mesh.geometry : (geo.parameters && BATCH_UNIT && BATCH_UNIT.box === geo ? geo : geo.clone()), mat, cap), zero = new T.Matrix4().makeScale(0, 0, 0), c0 = new T.Color(1, 1, 1);
+      im.castShadow = true; im.receiveShadow = true; im.frustumCulled = false;
+      for (var i = 0; i < cap; i++) { im.setMatrixAt(i, zero); im.setColorAt(i, c0); }
+      var nb = { key: key, mesh: im, cap: cap, free: [], occ: b ? b.occ.slice() : [] };
+      if (b) { var m4 = new T.Matrix4(), cc = new T.Color(); for (i = 0; i < b.cap; i++) { b.mesh.getMatrixAt(i, m4); im.setMatrixAt(i, m4); b.mesh.getColorAt(i, cc); im.setColorAt(i, cc); } scene.remove(b.mesh); b.mesh.dispose(); }
+      if (b) nb.free = b.free.slice();
+      for (i = cap - 1; i >= (b ? b.cap : 0); i--) nb.free.push(i);
+      nb.free.sort(function (x, y) { return y - x; });   // pop() — самое маленькое: занятые места держим в начале, рисуем только их (count)
+      im.count = b ? b.mesh.count : 0;
+      im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true;
+      scene.add(im); batches[key] = nb; return nb;
+    };
+    var bM = null, bQ = null, bP = null, bS = null, bL = null;
+    var canBatch = function (e) {
+      if (e._isPlayer || e.shape === 'label' || e.shape === 'image' || e.shape === 'character' || e.shape === 'model' || e.noBatch) return false;
+      if (e.shape === 'prefab') return true;
+      var m = e.mesh, mt = m.material; return !!(m.isMesh && mt && !Array.isArray(mt) && !mt.transparent && !(mt.emissive && mt.emissive.getHex()) && !mt.map && m.children.length === 0);
+    };
+    var poseKey = function (e) { var q = e._q, s = e.mesh.scale; return e.x + ',' + e.y + ',' + e.z + ',' + (q ? q.x + ',' + q.y + ',' + q.z + ',' + q.w : e.rotY) + ',' + s.x + ',' + s.y + ',' + s.z; };
+    var sleepE = function (e) {
+      if (!bM) { bM = new T.Matrix4(); bQ = new T.Quaternion(); bP = new T.Vector3(); bS = new T.Vector3(); bL = new T.Matrix4(); }
+      bP.set(e.x, e.y, e.z); if (e._q) bQ.set(e._q.x, e._q.y, e._q.z, e._q.w); else bQ.setFromAxisAngle(new T.Vector3(0, 1, 0), e.rotY || 0);
+      var slots = [], parts = [];
+      if (e.shape === 'prefab') { var k = 0; e.mesh.traverse(function (m) { if (m.isMesh) parts.push({ m: m, key: 'p:' + e._kind + ':' + (k++) }); }); }
+      else parts.push({ m: e.mesh, key: 's:' + e.shape });
+      for (var i = 0; i < parts.length; i++) {
+        var m = parts[i].m, mt = m.material;
+        if (!mt || mt.transparent || mt.map) return;   // такой части в пачке не место — объект остаётся сам по себе
+      }
+      parts.forEach(function (pt) {
+        var m = pt.m, mt = m.material, geo = m.geometry, key = pt.key;
+        if (e.shape === 'prefab') {
+          key += ':' + (mt.emissive ? mt.emissive.getHex() : 0);
+          bS.copy(e.mesh.scale); bM.compose(bP, bQ, bS); m.updateMatrix(); bL.multiplyMatrices(bM, m.matrix);
+        } else {
+          // единичная фигура, растянутая до размеров объекта: все кубы любых размеров и цветов — одна пачка
+          var pr = geo.parameters || {}, sx, sy, sz;
+          if (e.shape === 'sphere') { sx = sy = sz = (pr.radius || 0.5) * 2; } else if (e.shape === 'cylinder' || e.shape === 'cone') { sx = sz = (pr.radiusBottom || pr.radius || 0.5) * 2; sy = pr.height || 1; }
+          else { sx = pr.width || 1; sy = pr.height || 1; sz = pr.depth || 1; }
+          if (!BATCH_UNIT) BATCH_UNIT = { box: new T.BoxGeometry(1, 1, 1), sphere: new T.SphereGeometry(0.5, 20, 14), cylinder: new T.CylinderGeometry(0.5, 0.5, 1, 20), cone: new T.ConeGeometry(0.5, 1, 20) };
+          geo = BATCH_UNIT[e.shape] || BATCH_UNIT.box;
+          bS.set(sx * e.mesh.scale.x, sy * e.mesh.scale.y, sz * e.mesh.scale.z); bL.compose(bP, bQ, bS);
+        }
+        var b = batchFor(key, geo, mt), slot = b.free.pop(); b.occ[slot] = true; if (slot >= b.mesh.count) b.mesh.count = slot + 1;
+        b.mesh.setMatrixAt(slot, bL); b.mesh.setColorAt(slot, mt.color || new T.Color(1, 1, 1));
+        b.mesh.instanceMatrix.needsUpdate = true; b.mesh.instanceColor.needsUpdate = true;
+        if (!m.castShadow) b.mesh.castShadow = b.mesh.castShadow;   // тень — по пачке (почти все отбрасывают)
+        slots.push({ key: key, slot: slot }); m.visible = false;
+      });
+      e._sleep = slots;
+    };
+    var wakeE = function (e) {
+      var zero = new T.Matrix4().makeScale(0, 0, 0);
+      (e._sleep || []).forEach(function (s) {
+        var b = batches[s.key]; if (!b) return; b.mesh.setMatrixAt(s.slot, zero); b.mesh.instanceMatrix.needsUpdate = true; b.occ[s.slot] = false;
+        b.free.push(s.slot); b.free.sort(function (x, y) { return y - x; });
+        while (b.mesh.count > 0 && !b.occ[b.mesh.count - 1]) b.mesh.count--;
+      });
+      e._sleep = null; e._still = 0;
+      if (e.shape === 'prefab') e.mesh.traverse(function (m) { if (m.isMesh) m.visible = true; }); else e.mesh.visible = e.visible;
+    };
+    var stepBatches = function () {
+      for (var i = 0; i < ents.length; i++) {
+        var e = ents[i]; if (e._batchOff) continue;
+        if (e._canB == null) e._canB = canBatch(e);
+        if (!e._canB) continue;
+        var pk = e.visible ? poseKey(e) : null;
+        if (pk !== e._pk) { e._pk = pk; e._still = 0; if (e._sleep) wakeE(e); continue; }
+        if (!pk || e._sleep) continue;
+        if (++e._still >= 30) sleepE(e);
+      }
+    };
+    // ==== Частицы и эффекты: один THREE.Points на эффект (одна отрисовка), движение считаем сами, форма точки — в шейдере ====
+    // Эффекты только для красоты: считаются в render3d (скрытая вкладка их не считает), на игру не влияют.
+    var effects = [], fxTotal = 0;
+    var PART_VS = 'attribute float aSize; attribute vec3 aColor; attribute float aAlpha; varying vec3 vC; varying float vA; uniform float uScale;' +
+      'void main() { vC = aColor; vA = aAlpha; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * uScale / max(0.1, -mv.z); gl_Position = projectionMatrix * mv; }';
+    var PART_FS = 'varying vec3 vC; varying float vA; uniform int uKind; void main() { vec2 p = gl_PointCoord - 0.5; float d = length(p); float a;' +
+      ' if (uKind == 1) a = smoothstep(0.1, 0.0, abs(p.x)) * smoothstep(0.5, 0.25, abs(p.y));' +   // капля дождя — черта
+      ' else if (uKind == 2) a = smoothstep(0.5, 0.42, d) * smoothstep(0.28, 0.4, d) + smoothstep(0.2, 0.0, length(p + vec2(0.15, 0.15))) * 0.8;' +   // пузырь — кольцо с бликом
+      ' else if (uKind == 3) a = step(max(abs(p.x), abs(p.y) * 1.6), 0.42);' +   // конфетти — прямоугольник
+      ' else a = smoothstep(0.5, 0.0, d);' +
+      ' if (a * vA < 0.01) discard; gl_FragColor = vec4(vC, a * vA); }';
+    var up = function (a, b, side) { return function (v) { v[0] = rand(-side, side); v[1] = rand(a, b); v[2] = rand(-side, side); }; };
+    var sphere = function (a, b, lift) { return function (v) { var t = rand(0, Math.PI * 2), u = rand(-0.3, 1), s = rand(a, b), r = Math.sqrt(1 - u * u); v[0] = Math.cos(t) * r * s; v[1] = u * s + lift; v[2] = Math.sin(t) * r * s; }; };
+    var still = function (v) { v[0] = v[1] = v[2] = 0; };
+    var PRESETS = {
+      fire: { loop: 'fire', add: true, rate: 70, life: [0.5, 1], size: [0.75, 0.15], alpha: [0.9, 0], colors: ['#fff3b0', '#ff9f1c', '#e63946'], gravity: -2.5, drag: 1.5, spread: 0.25, vel: up(1, 2.2, 0.3) },
+      smoke: { rate: 12, life: [2, 3.2], size: [0.6, 2.4], alpha: [0.35, 0], colors: ['#9aa0a6', '#5f6368'], gravity: -0.4, drag: 0.6, spread: 0.3, vel: up(0.5, 1.1, 0.25) },
+      sparks: { add: true, rate: 40, life: [0.35, 0.8], size: [0.18, 0.05], alpha: [1, 0], colors: ['#ffffff', '#ffd166', '#ff8c42'], gravity: 9, drag: 0.5, spread: 0.05, vel: sphere(3, 6, 2) },
+      magic: { loop: 'magic', loopVol: 0.6, add: true, rate: 35, life: [0.8, 1.5], size: [0.28, 0], alpha: [1, 0], colors: ['#c77dff', '#7df9ff', '#ff70a6'], pick: true, gravity: -0.8, drag: 0.3, swirl: 2.2, spread: 0.6, vel: up(0.2, 0.7, 0.1) },
+      confetti: { sfx: 'pop', kind: 3, once: 90, life: [1.6, 2.6], size: [0.22, 0.22], alpha: [1, 0.9], colors: ['#ef476f', '#ffd166', '#06d6a0', '#118ab2', '#c77dff'], pick: true, gravity: 5, drag: 1.4, spread: 0.2, sway: 1.2, vel: sphere(4, 9, 6) },
+      burst: { add: true, once: 24, life: [0.4, 0.9], size: [0.3, 0.05], alpha: [1, 0], colors: ['#ffd166', '#ef476f', '#06d6a0', '#4cc9f0'], pick: true, gravity: 12, drag: 0.4, spread: 0.1, vel: sphere(3, 7, 3) },
+      explosion: { sfx: 'boom', add: true, once: 70, life: [0.35, 0.9], size: [1.1, 0.2], alpha: [1, 0], colors: ['#fff3b0', '#ff9f1c', '#e63946'], gravity: -1, drag: 2.5, spread: 0.3, vel: sphere(4, 11, 1), then: 'smokepuff' },
+      smokepuff: { once: 22, life: [1.2, 2.2], size: [1, 3], alpha: [0.45, 0], colors: ['#8d8d8d', '#4a4a4a'], gravity: -0.6, drag: 1.5, spread: 0.6, vel: sphere(0.5, 2, 0.5) },
+      snow: { rate: 140, area: 28, life: [8, 10], size: [0.14, 0.14], alpha: [0.95, 0.95], colors: ['#ffffff'], gravity: 0, drag: 0, sway: 0.6, vel: function (v) { v[0] = 0; v[1] = rand(-1.8, -1); v[2] = 0; } },
+      rain: { loop: 'rain', loopVol: 0.7, kind: 1, rate: 420, area: 24, life: [1.1, 1.3], size: [0.5, 0.5], alpha: [0.55, 0.55], colors: ['#a8d8ff'], gravity: 0, drag: 0, vel: function (v) { v[0] = 0.6; v[1] = -18; v[2] = 0; } },
+      bubbles: { kind: 2, rate: 8, life: [2.5, 4], size: [0.25, 0.4], alpha: [0.8, 0], colors: ['#bde0fe'], gravity: -0.6, drag: 0.8, sway: 0.5, spread: 0.3, vel: up(0.3, 0.6, 0.1) },
+      dust: { once: 10, life: [0.5, 0.9], size: [0.3, 0.8], alpha: [0.5, 0], colors: ['#d4b483'], gravity: -0.3, drag: 3, spread: 0.3, vel: sphere(0.6, 1.6, 0.2) },
+      sparkle: { add: true, rate: 12, life: [0.6, 1.2], size: [0.3, 0.3], twinkle: true, alpha: [1, 1], colors: ['#fff3b0', '#ffffff'], gravity: 0, drag: 0, spread: 0.8, vel: still },
+      fountain: { loop: 'water', rate: 90, life: [1, 1.5], size: [0.2, 0.12], alpha: [0.85, 0.2], colors: ['#ffffff', '#4cc9f0'], gravity: 9, drag: 0.1, spread: 0.1, vel: function (v) { v[0] = rand(-0.8, 0.8); v[1] = rand(6, 8); v[2] = rand(-0.8, 0.8); } },
+      trail: { add: true, rate: 60, life: [0.3, 0.5], size: [0.4, 0], alpha: [0.8, 0], colors: ['#7df9ff'], gravity: 0, drag: 0, spread: 0.08, vel: still },
+    };
+    UB.effect3d = function (name, o) {
+      if (!scene) throw new Error('call UB.create3d first');
+      o = o || {};
+      var P = PRESETS[name] || PRESETS.sparks, sc = o.scale || 1;
+      var lod = quality && !quality.shadows ? 0.6 : 1;   // слабое устройство (тени уже выключены) — частиц меньше
+      var cols = (o.color ? [color(o.color).lerp(new T.Color(0xffffff), 0.45), color(o.color)] : P.colors.map(color));
+      var pick = o.color ? (P.pick || false) : P.pick;
+      if (o.color && (name === 'burst' || name === 'confetti')) { cols = [color(o.color)]; }
+      var rate = (o.rate || P.rate || 0) * lod, once = P.once ? Math.round(Math.min(o.count || P.once, 200) * (lod < 1 ? 0.7 : 1)) : 0;
+      var n = Math.max(1, Math.min(name === 'rain' ? 900 : 800, once || Math.ceil(rate * P.life[1] * 1.15)));
+      if (fxTotal + n > 5000) n = Math.max(1, 5000 - fxTotal);
+      fxTotal += n;
+      var geo = new T.BufferGeometry(), pos = new Float32Array(n * 3), col = new Float32Array(n * 3), size = new Float32Array(n), alpha = new Float32Array(n);
+      geo.setAttribute('position', new T.BufferAttribute(pos, 3)); geo.setAttribute('aColor', new T.BufferAttribute(col, 3));
+      geo.setAttribute('aSize', new T.BufferAttribute(size, 1)); geo.setAttribute('aAlpha', new T.BufferAttribute(alpha, 1));
+      var mat = new T.ShaderMaterial({ vertexShader: PART_VS, fragmentShader: PART_FS, transparent: true, depthWrite: false,
+        blending: P.add ? T.AdditiveBlending : T.NormalBlending, uniforms: { uScale: { value: 500 }, uKind: { value: P.kind || 0 } } });
+      var pts = new T.Points(geo, mat); pts.frustumCulled = false; pts.renderOrder = 2; scene.add(pts);
+      var vel = new Float32Array(n * 3), age = new Float32Array(n), life = new Float32Array(n), seed = new Float32Array(n), pc = new Float32Array(n * 3), next = 0, acc = 0, v3 = [0, 0, 0];
+      for (var i = 0; i < n; i++) { age[i] = 1; life[i] = 0; }
+      var fx = { x: o.x || 0, y: o.y || 0, z: o.z || 0, follow: o.follow || null, on: true, name: name, points: pts };
+      var center = function () { var f = fx.follow; return f ? { x: f.x, y: f.y + (o.dy || 0), z: f.z } : { x: fx.x, y: fx.y, z: fx.z }; };
+      var spawn = function (c) {
+        var k = next; next = (next + 1) % n;
+        if (P.area) { var ar = P.area * sc; pos[k * 3] = c.x + rand(-ar, ar); pos[k * 3 + 1] = c.y + (name === 'rain' ? 12 : 14); pos[k * 3 + 2] = c.z + rand(-ar, ar); }
+        else { var sp = (P.spread || 0) * sc; pos[k * 3] = c.x + rand(-sp, sp); pos[k * 3 + 1] = c.y + rand(-sp, sp) * 0.5; pos[k * 3 + 2] = c.z + rand(-sp, sp); }
+        P.vel(v3); vel[k * 3] = v3[0] * sc; vel[k * 3 + 1] = v3[1] * sc; vel[k * 3 + 2] = v3[2] * sc;
+        age[k] = 0; life[k] = rand(P.life[0], P.life[1]); seed[k] = Math.random() * 100;
+        var cc = cols[pick ? Math.floor(Math.random() * cols.length) : 0]; pc[k * 3] = cc.r; pc[k * 3 + 1] = cc.g; pc[k * 3 + 2] = cc.b;
+      };
+      if (once) { var c0 = center(); for (var j = 0; j < n; j++) spawn(c0); }
+      fx.update = function (dt) {
+        var c = center();
+        if (fx.on && rate) { acc += rate * dt; var cap = 0; while (acc >= 1 && cap++ < n) { spawn(c); acc -= 1; } }
+        var alive = 0, g = P.gravity * sc, dr = Math.max(0, 1 - P.drag * dt);
+        for (var i = 0; i < n; i++) {
+          if (age[i] >= life[i]) { size[i] = 0; alpha[i] = 0; continue; }
+          age[i] += dt; alive++;
+          var t = Math.min(1, age[i] / life[i]), i3 = i * 3;
+          vel[i3 + 1] -= g * dt; vel[i3] *= dr; vel[i3 + 1] *= dr; vel[i3 + 2] *= dr;
+          pos[i3] += vel[i3] * dt; pos[i3 + 1] += vel[i3 + 1] * dt; pos[i3 + 2] += vel[i3 + 2] * dt;
+          if (P.sway) { pos[i3] += Math.sin(age[i] * 2 + seed[i]) * P.sway * dt; pos[i3 + 2] += Math.cos(age[i] * 1.7 + seed[i]) * P.sway * dt; }
+          if (P.swirl) { var dx = pos[i3] - c.x, dz = pos[i3 + 2] - c.z, an = P.swirl * dt, ca = Math.cos(an), sa = Math.sin(an); pos[i3] = c.x + dx * ca - dz * sa; pos[i3 + 2] = c.z + dx * sa + dz * ca; }
+          size[i] = (P.twinkle ? Math.sin(Math.PI * t) * P.size[1] : P.size[0] + (P.size[1] - P.size[0]) * t) * sc;
+          alpha[i] = P.alpha[0] + (P.alpha[1] - P.alpha[0]) * t;
+          if (pick || cols.length === 1) { col[i3] = pc[i3]; col[i3 + 1] = pc[i3 + 1]; col[i3 + 2] = pc[i3 + 2]; }
+          else { var f = t * (cols.length - 1), a = Math.min(cols.length - 2, Math.floor(f)), b2 = f - a, A = cols[a], B = cols[a + 1]; col[i3] = A.r + (B.r - A.r) * b2; col[i3 + 1] = A.g + (B.g - A.g) * b2; col[i3 + 2] = A.b + (B.b - A.b) * b2; }
+        }
+        mat.uniforms.uScale.value = renderer.domElement.height / (2 * Math.tan(camera.fov * Math.PI / 360));
+        geo.attributes.position.needsUpdate = geo.attributes.aColor.needsUpdate = geo.attributes.aSize.needsUpdate = geo.attributes.aAlpha.needsUpdate = true;
+        if (alive === 0 && (once || !fx.on)) fx.remove();
+      };
+      fx.stop = function () { fx.on = false; return fx; };
+      fx.remove = function () { var k = effects.indexOf(fx); if (k < 0) return; effects.splice(k, 1); fxTotal -= n; scene.remove(pts); geo.dispose(); mat.dispose(); };
+      effects.push(fx);
+      if (P.then) UB.effect3d(P.then, { x: fx.x, y: fx.y, z: fx.z, scale: sc, sound: false });
+      // звук эффекта (sound: false — без него): разовые — один раз из точки, постоянные — петля, которая ходит за эффектом
+      if (o.sound !== false) {
+        var at = { x: fx.x, y: fx.y, z: fx.z };
+        if (P.sfx) UB.sfx(P.sfx, { at: fx.follow || at, volume: o.volume });
+        if (P.loop) { var snd = UB.sound3d(P.loop, P.area ? { volume: o.volume } : { x: at.x, y: at.y, z: at.z, follow: fx.follow, volume: o.volume == null ? P.loopVol || 1 : o.volume }); fx.sound = snd;
+          var st0 = fx.stop, rm0 = fx.remove; fx.stop = function () { snd.stop(); return st0(); }; fx.remove = function () { snd.stop(); rm0(); }; }
+      }
+      return fx;
+    };
+    UB.burst3d = function (x, y, z, o) { o = o || {}; return UB.effect3d('burst', { x: x, y: y, z: z, color: o.color, count: o.count }); };
+    // ореол у светящихся объектов (glow и монеты / кристаллы / звёзды / порталы): мягкое свечение вместо дорогой постобработки
+    var haloTex = null;
+    // ореол готовых моделей: цвет, размер (м, до масштаба модели) и высота центра от середины хитбокса — только светящаяся часть
+    var HALO = { coin: ['#ffd166', 1.4, 0], crystal: ['#7df9ff', 1.8, 0], star: ['#ffd166', 1.7, 0], heart: ['#ff4d6d', 1.4, 0], key: ['#ffd166', 1.2, 0], portal: ['#b388ff', 3, 0], lamp: ['#fff3b0', 1.3, 1.45] };
+    var addHalo = function (mesh, c, sz) {
+      if (!haloTex) {
+        var hc = document.createElement('canvas'); hc.width = hc.height = 64; var hx = hc.getContext('2d'), gr = hx.createRadialGradient(32, 32, 0, 32, 32, 32);
+        gr.addColorStop(0, 'rgba(255,255,255,1)'); gr.addColorStop(0.35, 'rgba(255,255,255,.35)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+        hx.fillStyle = gr; hx.fillRect(0, 0, 64, 64); haloTex = new T.CanvasTexture(hc);
+      }
+      var sp = new T.Sprite(new T.SpriteMaterial({ map: haloTex, color: color(c), blending: T.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.5 }));
+      sp.scale.set(sz, sz, 1); sp.renderOrder = 1; mesh.add(sp); return sp;
     };
     // Игрок: ходьба относительно камеры (WASD / стрелки / джойстик), прыжок (Space / кнопка), гравитация, столкновения с solid
     UB.player3d = function (e, o) {
       o = o || {};
       var pc = { e: e, speed: o.speed || 7, jump: o.jump || 10, gravity: o.gravity || 28, onGround: false, enabled: true };
-      players.push(pc); e.vx = e.vy = e.vz = 0; e._isPlayer = true;
+      players.push(pc); e.vx = e.vy = e.vz = 0; e._isPlayer = true; e._pc = pc;
+      if ((e.shape === 'character' || e.shape === 'model') && !e.rotY) e.rotY = Math.PI;   // герой стоит спиной к камере: вперёд — это −z
       if (touch && !padMade) makePad();
       if (cam.mode === 'fixed' && cam.target == null) cam = { mode: 'follow', target: e, distance: 9, height: 5 };
       return pc;
@@ -761,12 +1734,23 @@
     };
     var camYaw = function () { return camera ? Math.atan2(camera.position.x - camTargetX, camera.position.z - camTargetZ) : 0; };
     var camTargetX = 0, camTargetZ = 0;
+    var resolve = function (e, s, axis) {
+      if (axis === 'y') { if (e.vy <= 0 && e.y > s.y) { e.y = s.y + (s.h + e.h) / 2; e.vy = 0; e._ground = true; } else if (e.vy > 0) { e.y = s.y - (s.h + e.h) / 2; e.vy = 0; } }
+      else if (axis === 'x') e.x = e.x > s.x ? s.x + (s.w + e.w) / 2 : s.x - (s.w + e.w) / 2;
+      else e.z = e.z > s.z ? s.z + (s.d + e.d) / 2 : s.z - (s.d + e.d) / 2;
+    };
+    var cellBox = { x: 0, y: 0, z: 0, w: 1, h: 1, d: 1 };
     var collide = function (e, axis) {
-      for (var i = 0; i < ents.length; i++) {
-        var s = ents[i]; if (s === e || !s.solid || !UB.hit3d(e, s)) continue;
-        if (axis === 'y') { if (e.vy <= 0 && e.y > s.y) { e.y = s.y + (s.h + e.h) / 2; e.vy = 0; e._ground = true; } else if (e.vy > 0) { e.y = s.y - (s.h + e.h) / 2; e.vy = 0; } }
-        else if (axis === 'x') e.x = e.x > s.x ? s.x + (s.w + e.w) / 2 : s.x - (s.w + e.w) / 2;
-        else e.z = e.z > s.z ? s.z + (s.d + e.d) / 2 : s.z - (s.d + e.d) / 2;
+      for (var i = 0; i < ents.length; i++) { var s = ents[i]; if (s !== e && s.solid && UB.hit3d(e, s)) resolve(e, s, axis); }
+      // мир из кубиков (UB.voxels3d с solid: true): твёрдые клетки вокруг героя — как твёрдые коробки (и без физики)
+      for (var vi = 0; vi < vox.length; vi++) {
+        var hv = vox[vi]; if (!hv.solid || !hv.cells) continue;
+        var sz = hv.size, o = hv.o, r = function (c, k) { return Math.round((c - o[k]) / sz); };
+        for (var cx = r(e.x - e.w / 2, 0); cx <= r(e.x + e.w / 2, 0); cx++) for (var cy = r(e.y - e.h / 2, 1); cy <= r(e.y + e.h / 2, 1); cy++) for (var cz = r(e.z - e.d / 2, 2); cz <= r(e.z + e.d / 2, 2); cz++) {
+          if (!hv.cells[cx + ',' + cy + ',' + cz]) continue;
+          cellBox.x = o[0] + cx * sz; cellBox.y = o[1] + cy * sz; cellBox.z = o[2] + cz * sz; cellBox.w = cellBox.h = cellBox.d = sz;
+          if (UB.hit3d(e, cellBox)) resolve(e, cellBox, axis);
+        }
       }
     };
     // ==== Физика (Rapier; библиотека на странице, только если игра зовёт UB.body / UB.physics) ====
@@ -969,13 +1953,33 @@
       });
       if (pw) physStep(dt);
     };
+    // Автокачество: первые 2 с не считаем (загрузка), дальше окно 3 с. Медленно (кадр > 28 мс) — сначала выключаем тени,
+    // потом снижаем чёткость (1 → 0.75). Скрытая вкладка сюда не попадает (render3d не зовётся).
+    var autoQuality = function (dt) {
+      var q = quality; q.t += dt; if (q.t < 2) return;
+      q.frames++; if (dt > 0.028) q.slow++;
+      if (q.frames < 90) return;
+      var slow = q.slow / q.frames > 0.5; q.frames = 0; q.slow = 0;
+      if (!slow) return;
+      if (q.shadows) {
+        q.shadows = false; renderer.shadowMap.enabled = false; sun.castShadow = false;
+        scene.traverse(function (m) { if (m.material) [].concat(m.material).forEach(function (mt) { mt.needsUpdate = true; }); });
+      } else if (q.ratio > 0.75) { q.ratio = q.ratio > 1 ? 1 : 0.75; renderer.setPixelRatio(q.ratio); fit(); }
+      else q.mode = 'done';
+      UB.quality3d = { shadows: q.shadows, pixelRatio: q.ratio };
+    };
+    // нагрузка последнего кадра: команд рисования (calls), треугольников, объектов; кадров в секунду
+    var fpsAcc = 0, fpsN = 0, fpsVal = 0;
+    UB.stats3d = function () { var r = renderer && renderer.info.render; return { calls: r ? r.calls : 0, triangles: r ? r.triangles : 0, objects: ents.length, fps: fpsVal, shadows: !!(quality && quality.shadows), pixelRatio: quality ? quality.ratio : 1 }; };
     UB.render3d = function (dt) {
+      fpsAcc += dt; fpsN++; if (fpsAcc >= 1) { fpsVal = Math.round(fpsN / fpsAcc); fpsAcc = 0; fpsN = 0; }
       for (var i = fx.length - 1; i >= 0; i--) { var f = fx[i]; f.t += dt; f.vy -= 15 * dt; f.m.position.x += f.vx * dt; f.m.position.y += f.vy * dt; f.m.position.z += f.vz * dt; if (f.t > f.life) { scene.remove(f.m); fx.splice(i, 1); } }
       ents.forEach(function (e) {
-        e.mesh.position.set(e.x, e.y, e.z); e.mesh.visible = e.visible;
+        e.mesh.position.set(e.x, e.y, e.z); e.mesh.visible = e.visible && !(e._sleep && e.shape !== 'prefab');
         if (e.shape === 'image' || e.shape === 'label') return;
         if (e._q) e.mesh.quaternion.set(e._q.x, e._q.y, e._q.z, e._q.w); else e.mesh.rotation.y = e.rotY;   // тело физики вертится по всем осям
       });
+      if (!quality || quality.batch !== false) stepBatches();
       if (cam.mode === 'follow' && cam.target) {
         // камера держит постоянный угол (cam.yaw, по умолчанию — позади, «вперёд» = −z): иначе управление относительно камеры крутило бы героя по кругу
         var t = cam.target, yaw = cam.yaw || 0, tx = t.x + Math.sin(yaw) * cam.distance, tz = t.z + Math.cos(yaw) * cam.distance;
@@ -993,6 +1997,16 @@
       } else {
         camera.position.set(cam.x || 0, cam.y == null ? 12 : cam.y, cam.z == null ? 18 : cam.z); var lk = cam.look || { x: 0, y: 0, z: 0 }; camTargetX = lk.x; camTargetZ = lk.z; camera.lookAt(lk.x, lk.y, lk.z);
       }
+      if (skyDome) skyDome.position.copy(camera.position);
+      if (sun) {
+        // солнце светит на то место, куда смотрит камера; шаг 2 м — тени не «дрожат» при движении
+        var fx0 = Math.round(camTargetX / 2) * 2, fz0 = Math.round(camTargetZ / 2) * 2;
+        sun.position.set(fx0 + 30, 60, fz0 + 20); sun.target.position.set(fx0, 0, fz0);
+      }
+      if (quality && quality.mode === 'auto') autoQuality(dt);
+      for (var ai = 0; ai < animated.length; ai++) if (animated[ai].visible) animated[ai]._animate(Math.min(dt, 0.1));
+      for (var ei = effects.length - 1; ei >= 0; ei--) if (effects[ei]) effects[ei].update(Math.min(dt, 0.1));
+      stepAudio();
       renderer.render(scene, camera);
     };
   })();

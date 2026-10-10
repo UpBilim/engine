@@ -4,6 +4,9 @@ A tiny game engine for **kids' games and AI-written games**. One script, one glo
 
 - **2D**: canvas scenes, keyboard + mouse + touch, auto-scaling, particles, sounds, music, tweens, cameras, levels from text, platformer physics, enemy AI, HUD, quiz windows.
 - **3D**: a world on [three.js](https://threejs.org): objects, ready-made low-poly models, voxel worlds (thousands of blocks in one draw call), follow / top / **first-person** cameras, phone joystick.
+- **Characters and models**: animated blocky people (Roblox-like, no files needed: walk, run, jump, wave, dance, cheer) and glTF models with skeletal animation.
+- **Blocks**: 58 built-in Minecraft-like blocks with pixel textures drawn by code (grass, stone, brick, glass, water, flowers, lamps, torches…): `UB.voxels3d([{ x, y, z, b: 'grass' }])`, only visible faces are drawn, soft corner shadows.
+- **Effects**: GPU particles in one call (`UB.effect3d('fire' | 'smoke' | 'magic' | 'confetti' | 'explosion' | 'snow' | 'rain' | ...)`), soft glow halos, sun shadows, gradient sky, automatic quality for slow devices.
 - **Physics**: real rigid bodies on [Rapier](https://rapier.rs): falling, rolling, stacking, explosions, ropes, hinges, a character that climbs steps and pushes crates.
 - **Genre kits**: `UB.kit.platformer / runner / maze / shooter / quiz`: a whole polished game (menu, levels, stars, best score, phone controls) from one config object.
 - **Team mode**: one shared screen + phones as gamepads (needs a small relay server, see below).
@@ -15,7 +18,7 @@ It powers the game studio of [UpBilim](https://upbilim.com), where students desc
 ```html
 <!doctype html>
 <meta charset="utf-8">
-<script src="https://cdn.jsdelivr.net/gh/UpBilim/engine@v0.1.0/src/upbilim-engine.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/UpBilim/engine@v0.2.0/src/upbilim-engine.js"></script>
 <script>
 UB.create({ width: 960, height: 540, background: '#10142a' });
 UB.scene('play', {
@@ -78,6 +81,8 @@ python3 -m http.server 8080    # then open http://localhost:8080/examples/
 | `examples/hello-2d.html` | 2D basics: scenes, input, drawing, sounds |
 | `examples/platformer-kit.html` | A full platformer from one `UB.kit.platformer` config |
 | `examples/obby-3d.html` | 3D parkour: platforms, coins, follow camera, phone joystick |
+| `examples/characters-3d.html` | Animated characters and a glTF robot; the hero animates by itself |
+| `examples/blocks-3d.html` | A block island: built-in pixel-textured blocks (grass, brick, glass, water, flowers, torches), walkable |
 | `examples/physics-3d.html` | Physics: a tower, bowling pins, a pendulum, an explosion, a player who pushes crates |
 
 ## API
@@ -85,6 +90,18 @@ python3 -m http.server 8080    # then open http://localhost:8080/examples/
 The full reference is in [`docs/API.md`](docs/API.md). It is the same text the UpBilim AI reads before writing a game, so it is short and complete.
 
 Images: `UB.image('Hero', 'hero.png')` before `UB.start(...)`, then `g.image('Hero', x, y, w, h)` in 2D or `UB.spawn({ shape: 'image', image: 'Hero' })` in 3D.
+
+## Characters and models
+
+```js
+const hero = UB.character3d({ shirt: '#ef476f', hat: 'cap' });   // animates by itself: idle / walk / run / jump
+UB.player3d(hero);
+hero.play('wave', { once: true });                                 // wave, dance, cheer, hit, jump
+UB.loadModel('robot', 'RobotExpressive.glb');                      // before UB.start
+UB.model3d('robot', { x: 0, z: -4, h: 2.4 }).play('Dance');        // skeletal animation clips by name
+```
+
+Models need `GLTFLoader` and `SkeletonUtils` from three.js addons on `window` (see `examples/characters-3d.html`).
 
 ## Embedding and team mode
 

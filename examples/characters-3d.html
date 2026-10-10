@@ -1,0 +1,37 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Characters 3D</title>
+<script type="importmap">{ "imports": { "three": "https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js", "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.186.1/examples/jsm/" } }</script></head>
+<body>
+<script type="module">
+// Animated characters: blocky people (no files needed) and a glTF model with skeletal animation.
+// Walk with WASD / arrows, Space jumps: the hero animates by itself (idle / walk / run / jump).
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import * as SkeletonUtils from 'three/addons/utils/SkeletonUtils.js';
+window.THREE = THREE; window.GLTFLoader = GLTFLoader; window.SkeletonUtils = SkeletonUtils;
+await import('../src/upbilim-engine.js');
+
+// RobotExpressive by Tomás Laulhé (Quaternius), CC0 — from the three.js examples
+UB.loadModel('robot', 'https://cdn.jsdelivr.net/gh/mrdoob/three.js@r186/examples/models/gltf/RobotExpressive/RobotExpressive.glb');
+UB.create3d({ sky: '#8fd3ff' });
+UB.scene('play', {
+  enter(s) {
+    UB.clear3d();
+    s.hero = UB.character3d({ z: 5, shirt: '#ef476f', pants: '#264653', hat: 'cap', hatColor: '#ffd166' });
+    UB.player3d(s.hero, { speed: 6 });
+    UB.camera3d({ mode: 'follow', target: s.hero, distance: 9, height: 4 });
+    UB.character3d({ x: -3, z: 0, shirt: '#06d6a0', hair: '#e9c46a', hat: 'bow', hatColor: '#ff70a6' }).play('dance');
+    UB.character3d({ x: 3, z: 0, style: 'robot' }).play('cheer');
+    s.walker = UB.character3d({ x: -6, z: -3, shirt: '#ffd166', hat: 'crown', skin: '#8d5524' });
+    UB.model3d('robot', { x: 0, z: -4, h: 2.4 }).play('Dance');
+    for (let i = 0; i < 12; i++) UB.prefab(UB.pick(['tree', 'pine', 'bush', 'rock']), { x: UB.pick([-1, 1]) * UB.rand(9, 25), z: -UB.rand(0, 30) });
+  },
+  update(s, dt) {
+    s.walker.x += 2.5 * dt; s.walker.rotY = Math.PI / 2; if (s.walker.x > 6) s.walker.x = -6;
+    for (const e of UB.entities()) if (e.play && e !== s.hero && UB.dist3d(e, s.hero) < 2.2 && !e._greeted) { e._greeted = true; e.play('wave', { once: true }); }
+  },
+  draw(g) { g.text('WASD / arrows to walk, Space to jump. Come close to say hi.', 20, 20, { size: 20 }); },
+});
+UB.start('play');
+</script>
+</body></html>

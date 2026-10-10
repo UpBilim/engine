@@ -1,0 +1,44 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no"><title>Blocks 3D</title></head>
+<body>
+<script type="module">
+// A Minecraft-like island from the built-in blocks (pixel textures drawn by code, no image files):
+// UB.voxels3d([{ x, y, z, b: 'grass' }]) and boxes of any size with a block texture: UB.spawn({ shape: 'box', block: 'brick' }).
+import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.186.1/build/three.module.js';
+window.THREE = THREE;
+await import('../src/upbilim-engine.js');
+
+UB.create3d({ sky: '#8fd3ff', ground: false, quality: 'high' });
+UB.scene('play', {
+  enter(s) {
+    UB.clear3d();
+    const L = [];
+    for (let x = -10; x <= 10; x++) for (let z = -10; z <= 10; z++) {
+      const r = Math.hypot(x, z); if (r > 10.5) continue;
+      L.push({ x, y: -2, z, b: 'stone' }); L.push({ x, y: -1, z, b: 'dirt' });
+      if (x >= 3 && x <= 7 && z >= 2 && z <= 6) { L.push({ x, y: 0, z, b: 'water' }); continue; }
+      L.push({ x, y: 0, z, b: r > 9 ? 'sand' : (x + z) % 7 === 0 ? 'path' : 'grass' });
+      if (r < 9 && !(x >= -7 && x <= -2 && z >= -7 && z <= -3) && (x * 7 + z * 13) % 11 === 0) L.push({ x, y: 1, z, b: (x + z) % 2 ? 'flowers' : 'tallgrass' });
+    }
+    // домик: кирпич, доски, стекло, дверь, лампа
+    for (let x = -7; x <= -2; x++) for (let z = -7; z <= -3; z++) for (let y = 1; y <= 4; y++) {
+      const wall = x === -7 || x === -2 || z === -7 || z === -3; if (!wall && y < 4) continue;
+      let b = y === 4 ? 'planks' : 'brick'; if (y === 2 && wall && (x === -5 || z === -5) && !(x === -4 && z === -3)) b = 'glass';
+      if (x === -4 && z === -3 && y <= 2) b = 'door';
+      L.push({ x, y, z, b });
+    }
+    L.push({ x: -4, y: 3, z: -2, b: 'lamp' });
+    // деревья
+    for (const [tx, tz] of [[6, -6], [-6, 6], [1, 8]]) { for (let y = 1; y <= 4; y++) L.push({ x: tx, y, z: tz, b: 'log' }); for (let dx = -2; dx <= 2; dx++) for (let dz = -2; dz <= 2; dz++) for (let y = 4; y <= 6; y++) if (Math.abs(dx) + Math.abs(dz) + (y - 4) < 4 && !(dx === 0 && dz === 0 && y < 6)) L.push({ x: tx + dx, y, z: tz + dz, b: 'leaves' }); }
+    L.push({ x: 0, y: 1, z: 2, b: 'torch' }); L.push({ x: 2, y: 1, z: 0, b: 'gold' }); L.push({ x: -1, y: 1, z: 4, b: 'question' }); L.push({ x: 8, y: 1, z: -1, b: 'bounce' });
+    UB.voxels3d(L, { solid: true });
+    UB.spawn({ shape: 'box', block: 'brick', w: 4, h: 2, d: 1, x: 4, y: 1.5, z: -3 });
+    UB.spawn({ shape: 'box', block: 'planks', w: 2, h: 0.5, d: 2, x: 0, y: 3, z: -1 });
+    s.hero = UB.character3d({ x: 1, y: 1.5, z: 4, shirt: '#ef476f', hat: 'cap' }); UB.player3d(s.hero);
+    UB.camera3d({ mode: 'fixed', x: 12, y: 11, z: 15, look: { x: -1, y: 0, z: -1 } });
+  },
+  draw(g) { g.text('Blocks: WASD / arrows to walk, Space to jump', 20, 20, { size: 22 }); },
+});
+UB.start('play');
+</script>
+</body></html>

@@ -45,7 +45,8 @@ DRAW (g)
 EFFECTS & SOUND
   UB.burst(x,y,{ count:16, color, speed:260, size:5 })   // particle explosion
   UB.shake(8, 0.25)              // screen shake (amount px, seconds)
-  UB.sfx('jump'|'coin'|'hit'|'shoot'|'click'|'correct'|'wrong'|'win'|'lose'|'powerup')
+  UB.sfx('jump'|'coin'|'hit'|'shoot'|'click'|'correct'|'wrong'|'win'|'lose'|'powerup'|'boom'|'pop'|'whoosh'|'splash'|'magic', { x, volume })
+     // optional { x }: the sound comes from that side of the screen (stereo) — e.g. UB.sfx('hit', { x: enemy.x })
 
 HELPERS
   UB.overlap(a,b) for {x,y,w,h}; UB.circleHit(a,b) for {x,y,r}; UB.pointIn(p,rect); UB.dist(a,b)
@@ -101,9 +102,12 @@ PLATFORM
 ```
 3D needs three.js loaded as window.THREE before the engine. The engine wraps it: use the UB 3D API below (THREE stays available for anything else).
   UB.create3d({ sky: '#8fd3ff', fog: true, ground: true, groundColor: '#7ccf6b', groundSize: 240 })   // INSTEAD of UB.create, first line
-  const e = UB.spawn({ shape: 'box'|'sphere'|'cylinder'|'cone'|'image', x, y, z, w, h, d /* box */, r /* sphere, cylinder, cone */, color, image: 'Name', solid: false, rotY: 0, glow: '#ffcc00', opacity })
+     // the sky is a gradient from sky; objects cast soft sun shadows; quality: 'auto' (slow devices turn shadows off and lower resolution) | 'high' | 'low'
+     // a night or space game: a dark sky ('#0b1026') + glowing objects (glow) look great
+  const e = UB.spawn({ shape: 'box'|'sphere'|'cylinder'|'cone'|'image', x, y, z, w, h, d /* box */, r /* sphere, cylinder, cone */, color, image: 'Name', solid: false, rotY: 0, glow: '#ffcc00', opacity, shadow: true /* false: casts no shadow */ })
      // units are meters; y is the CENTER height (a box standing on the ground: y = h / 2). Player-sized: 1 x 2 x 1.
-     // 'image' = a flat picture (UB.image) that always faces the camera — use it for heroes, enemies and items (w, h).
+     // 'image' = a flat picture (UB.image) that always faces the camera — use it for creatures, monsters and items (w, h).
+     // People and robots (the hero, friends, rivals, villagers): use UB.character3d below — animated 3D characters look far better.
      // solid: true = the player stands on it and bumps into it (platforms, walls, floors). The ground is already solid.
   e.x e.y e.z e.rotY e.visible e.data ; e.setColor('#ff0000') ; e.remove()
   UB.entities() ; UB.clear3d()   // removes every spawned object except the ground — call it in every scene enter() that builds a level
@@ -115,9 +119,41 @@ PLATFORM
   UB.camera3d({ mode: 'first', target: e })   // FIRST-PERSON: eyes of the hero; mouse (click locks the cursor) / right-half finger drag look around,
      // W/S forward-back, A/D strafe, arrows turn; the hero body is hidden. UB.look = { yaw, pitch } — where the player looks:
      // forward vector = { x: -Math.sin(UB.look.yaw), z: -Math.cos(UB.look.yaw) } (shoot / interact along it). Draw a crosshair at the screen center in draw().
-  UB.burst3d(x, y, z, { color, count })
+  UB.burst3d(x, y, z, { color, count })   // a quick colorful pop (collecting, hitting)
+EFFECTS (particles — use them generously, they make a 3D game feel alive and cost little)
+  const fx = UB.effect3d('fire'|'smoke'|'sparks'|'magic'|'bubbles'|'sparkle'|'fountain'|'trail'|'snow'|'rain'|'confetti'|'explosion'|'burst'|'dust', { x, y, z, follow: e, dy: 0, color, scale: 1 })
+     // continuous ones (fire, smoke, sparks, magic, bubbles, sparkle, fountain, trail, snow, rain) run until fx.stop() (fades out) or fx.remove();
+     // one-shots (confetti, explosion, burst, dust) end by themselves. follow: an entity — the effect moves with it (dy = height offset);
+     // snow / rain fill the air around the camera (no position needed). color tints any effect.
+     // effects make their own sound: fire crackles, fountain splashes, rain patters, magic shimmers, explosion booms, confetti pops (sound: false — silent)
+  Ideas: confetti on a win, explosion when something blows up (cartoon, kid-safe), dust when landing, sparkle on collectibles, magic around
+  portals, fire on torches, a trail behind rockets and balls, snow or rain for the mood. glow: '#ffcc00' on UB.spawn adds a soft light halo
+  (coins, crystals, stars, hearts, keys, portals and lamps glow by themselves).
   UB.prefab('tree'|'pine'|'bush'|'rock'|'coin'|'crystal'|'star'|'heart'|'key'|'flag'|'house'|'tower'|'lamp'|'gate'|'portal'|'chest'|'cloud'|'fence'|'car', { x, z, y, scale, color, solid, rotY })
      // ready-made low-poly models (an entity like spawn: hitbox, e.remove(), e.setColor). Use them to make worlds look rich instead of bare boxes.
+BLOCKS (the same blocks as the UpBilim school world — kids know them; pixel textures, Minecraft-like)
+  UB.voxels3d([{ x, y, z, b: 'grass' }, ...], { solid: true })   // a block world: 1 block = 1 m, centers on whole numbers; thousands are cheap
+     // solid: true — the hero (UB.player3d) walks and jumps on it, with or without physics; water, flowers, tallgrass and torches are walk-through.
+     // blocks: grass dirt stone sand planks log leaves white path brick glass books water flowers lamp gold cobble sandstone snow ice torch
+     //   tallgrass purple yellow blue red green black orange pink lava bounce question checker tiles asphalt sidewalk start finish checkpoint
+     // { x, y, z, c: '#ff0000' } — a plain colored cube instead of a block. Build terrain in layers: stone, dirt, grass on top; trees = log + leaves.
+  UB.spawn({ shape: 'box', block: 'brick', w: 4, h: 2, d: 1, x, y, z, solid: true })   // a box of any size with a block texture (tiles, not stretched)
+  UB.blocks   // every block name
+SOUND IN 3D (spatial: far sounds are quieter, left/right follow the camera; the ears are on the hero)
+  UB.sfx('hit', { at: enemy }) | UB.sfx('coin', { x, y, z })   // a sound from that place in the world (any UB.sfx name)
+  const s = UB.sound3d('fire'|'water'|'rain'|'wind'|'waves'|'birds'|'engine'|'hum'|'magic', { x, y, z | follow: e, volume: 1 })   // a looping world sound
+     // follow: it moves with the object (engine on a car, hum on a robot); no position = background (wind, rain, birds over the whole level)
+  s.stop() ; s.volume(0.5)   // UB.clear3d() stops all. Add 1-2 ambient sounds per level (birds in a forest, waves at the sea, wind in the mountains).
+CHARACTERS (animated blocky 3D people, Roblox-like — the default look for the hero and every person in a 3D game)
+  const hero = UB.character3d({ x, z, shirt: '#ef476f', pants: '#3a0ca3', skin: '#f2c79c', hair: '#4a2b0f' | null, hat: 'cap'|'crown'|'party'|'helmet'|'bow'|null, hatColor, shoes, eyes, style: 'robot', scale: 1 })
+     // an entity 0.9 x 2 x 0.9 (like a player box): works with UB.player3d, cameras, UB.hit3d, e.remove(), e.setColor(shirt).
+     // It animates BY ITSELF from how it moves: idle / walk / run, and jump while in the air (for the UB.player3d hero) — never animate limbs yourself.
+     // Front is +z at rotY = 0: for NPCs moving along a direction (dx, dz) set e.rotY = Math.atan2(dx, dz). Give each person a different outfit.
+  e.play('wave'|'dance'|'cheer'|'hit'|'jump', { once: true })   // a one-time gesture (win: 'cheer', got hit: 'hit', greet: 'wave'), then back to auto
+  e.play('dance') loops until e.play('auto') ; e.stop()
+  UB.loadModel('robot', 'RobotExpressive.glb') (before UB.start; needs window.GLTFLoader and window.SkeletonUtils from three.js addons)
+  UB.model3d('robot', { x, z, h: 2.4, rotY })   // an animated glTF model loaded with UB.loadModel (skeletal animation): e.play('Dance'|'Wave'|'Jump'|'Yes'|'No'|'ThumbsUp'|'Punch'|'Sitting', { once })
+     // also auto idle / walk / run like characters (clips named like Idle / Walking / Running / Jump). An unknown name shows a placeholder.
   UB.label3d('42', x, y, z, { h: 0.9, color, bg }) -> e ; e.setText('43')   // text in the world facing the camera: answers on doors, names, signs
   UB.toScreen3d(x, y, z) -> { x, y, visible }   // world point -> HUD coordinates (health bars, hints over objects in draw)
   Scenes work as usual: update(s, dt) moves things; draw(g, s) draws ONLY the 2D HUD on top (score, timer, hints, buttons) — the 3D world renders itself.
