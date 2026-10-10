@@ -1,6 +1,6 @@
 {
   "name": "upbilim-engine",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "A tiny game engine for kids' games and AI-written games: 2D canvas, 3D on three.js, real physics on Rapier, genre kits.",
   "main": "src/upbilim-engine.js",
   "files": ["src", "docs", "examples", "LICENSE", "README.md"],

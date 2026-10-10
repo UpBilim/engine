@@ -1,4 +1,4 @@
-/*! UpBilim Engine v0.2.0 | MIT License | (c) 2026 UpBilim | https://upbilim.com
+/*! UpBilim Engine v0.3.0 | MIT License | (c) 2026 UpBilim | https://upbilim.com
  * A tiny game engine for kids' games and AI-written games: 2D canvas, 3D on three.js (window.THREE),
  * physics on Rapier (window.RAPIER), genre kits UB.kit.*. Reference: docs/API.md */
 (function () {
@@ -601,9 +601,14 @@
       o = o || {};
       UB.create({ width: o.width || 960, height: o.height || 540, background: o.sky || '#8fd3ff', letterbox: '#05060c' });
       UB.is3d = true;
-      gl = document.createElement('canvas'); gl.style.position = 'absolute'; gl.style.display = 'block';
-      document.body.insertBefore(gl, canvas); canvas.style.background = 'transparent';
-      renderer = new T.WebGLRenderer({ canvas: gl, antialias: (window.devicePixelRatio || 1) < 2, powerPreference: 'high-performance' });
+      // a repeated call (arena: shared screen and own player in one tab) reuses the same renderer (WebGL context)
+      // with a new scene: a second context in the tab would cost memory and a second to create
+      if (scene) { UB.clear3d(); if (ground) { ground.remove(); ground = null; } batches = {}; }
+      if (!renderer) {
+        gl = document.createElement('canvas'); gl.style.position = 'absolute'; gl.style.display = 'block';
+        document.body.insertBefore(gl, canvas); canvas.style.background = 'transparent';
+        renderer = new T.WebGLRenderer({ canvas: gl, antialias: (window.devicePixelRatio || 1) < 2, powerPreference: 'high-performance' });
+      }
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       scene = new T.Scene(); scene.background = color(o.sky || '#8fd3ff');
       // gradient sky: lighter at the horizon, deeper above; fog has the horizon color, so the world's edges fade into the sky
@@ -680,7 +685,18 @@
       } else {
         var geo = shape === 'sphere' ? new T.SphereGeometry(r, 20, 14) : shape === 'cylinder' ? new T.CylinderGeometry(r, r, h, 20) : shape === 'cone' ? new T.ConeGeometry(r, h, 20) : new T.BoxGeometry(w, h, d);
         var bdef = o.block != null && shape === 'box' ? BLOCK_BY[String(o.block)] : null;
-        if (bdef && bdef.id && getAtlas()) {   // a box made of a world block: the tile texture repeats along its size
+        if (bdef && bdef.id && bdef.boxes) {
+          // a slab or stairs block as a box: real parts (a stair = a lower half and a back upper half), the hero steps up them;
+          // collisions go by parts (e.parts, see collide)
+          var pm = [], pg = new T.Group(); geo.dispose();
+          bdef.boxes.forEach(function (bx) {
+            var pw2 = (bx[3] - bx[0]) * w, ph2 = (bx[4] - bx[1]) * h, pd2 = (bx[5] - bx[2]) * d, mm = getAtlas() ? blockBoxMats(bdef, pw2, ph2, pd2) : [new T.MeshLambertMaterial({ color: color(bdef.side) })];
+            var part = new T.Mesh(new T.BoxGeometry(pw2, ph2, pd2), mm); part.position.set(((bx[0] + bx[3]) / 2 - 0.5) * w, ((bx[1] + bx[4]) / 2 - 0.5) * h, ((bx[2] + bx[5]) / 2 - 0.5) * d);
+            pg.add(part); pm = pm.concat(mm);
+          });
+          mesh = pg; o.__parts = bdef.boxes;
+          mat = { color: null, map: null, dispose: function () { pm.forEach(function (m) { m.dispose(); }); pg.children.forEach(function (c) { c.geometry.dispose(); }); } };
+        } else if (bdef && bdef.id && getAtlas()) {   // a box made of a world block: the tile texture repeats along its size
           var bm = blockBoxMats(bdef, w, h, d); mesh = new T.Mesh(geo, bm);
           mat = { color: null, map: null, dispose: function () { bm.forEach(function (m) { m.dispose(); }); } };
         } else {
@@ -707,10 +723,11 @@
           if (shape === 'model') { /* geometry is shared by all copies of the model — don't dispose */ }
           else if (shape === 'character') mesh.traverse(function (m) { if (m.material && m.material.userData.own) m.material.dispose(); });
           else if (shape === 'prefab') mesh.traverse(function (m) { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
-          else { if (mesh.geometry) mesh.geometry.dispose(); if (mat.map) mat.map.dispose(); mat.dispose(); mesh.children.forEach(function (c) { if (c.material) c.material.dispose(); }); }
+          else { if (mesh.geometry) mesh.geometry.dispose(); if (mat.map) mat.map.dispose(); mat.dispose(); if (!e.parts) mesh.children.forEach(function (c) { [].concat(c.material || []).forEach(function (m) { if (m && m.dispose) m.dispose(); }); }); }
           var i = ents.indexOf(e); if (i >= 0) ents.splice(i, 1);
         } };
       if (shape === 'prefab') e._kind = o.prefab || o.name || 'rock';
+      if (o.__parts) e.parts = o.__parts;
       ents.push(e); return e;
     };
     // Ready-made models from simple shapes: the group's center is the hitbox center (like other objects)
@@ -763,6 +780,7 @@
       var joint = function (x, y) { var g = new T.Group(); g.position.set(x, y, 0); body.add(g); return g; };
       // legs: hinge at the hip (y = −0.2 from the center; bottom is −1)
       var hipL = joint(0.16, -0.2), hipR = joint(-0.16, -0.2);
+      if (robot) return robotBody(o, root, body, joint, hipL, hipR, box, at);
       [hipL, hipR].forEach(function (hp) { hp.add(at(box(0.3, 0.62, 0.32, pants), 0, -0.31, 0)); hp.add(at(box(0.32, 0.18, 0.38, o.shoes || '#2b2d42'), 0, -0.71, 0.03)); });
       var torso = at(box(0.68, 0.72, 0.38, shirt, null, true), 0, 0.15, 0); torso.userData.tint = true; body.add(torso);
       // arms: hinge at the shoulder
@@ -784,6 +802,44 @@
       else if (hat === 'party') { var cone = at(new T.Mesh(charGeo.cone || (charGeo.cone = new T.ConeGeometry(0.2, 0.5, 12)), lam(hatC)), 0, 0.82, 0); neck.add(cone); }
       else if (hat === 'helmet') { neck.add(at(box(0.6, 0.34, 0.58, hatC), 0, 0.5, -0.02)); neck.add(at(box(0.46, 0.14, 0.04, '#9ad1ff'), 0, 0.33, 0.3)); }
       else if (hat === 'bow') { neck.add(at(box(0.16, 0.12, 0.1, hatC), -0.1, 0.62, 0)); neck.add(at(box(0.16, 0.12, 0.1, hatC), 0.1, 0.62, 0)); }
+      root.userData.rig = { body: body, hipL: hipL, hipR: hipR, shL: shL, shR: shR, neck: neck };
+      root.scale.setScalar(o.scale || 1);
+      return root;
+    };
+    // A blocky robot like a game hero: helmet with a dark visor and glowing eyes, chest plate with a glowing core, backpack,
+    // shoulder pads, gloves, big boots and (with item: 'blaster') an arm cannon with a glowing muzzle. Same joints as people,
+    // so all animations work. Colors: shirt — the body, pants — the accent (plates, boots), eyes — the glow.
+    var robotBody = function (o, root, body, joint, hipL, hipR, box, at) {
+      var main = o.shirt || '#f39c34', acc = o.pants || '#3f9e4f', dark = '#2b2d42', metal = '#8d96a0', glow = o.eyes || '#ffb547';
+      var tint = function (m) { m.userData.tint = true; return m; };
+      [hipL, hipR].forEach(function (hp) {
+        hp.add(at(tint(box(0.3, 0.34, 0.32, main, null, true)), 0, -0.17, 0)); hp.add(at(box(0.26, 0.12, 0.28, dark), 0, -0.38, 0.01));
+        hp.add(at(tint(box(0.32, 0.24, 0.34, main, null, true)), 0, -0.55, 0)); hp.add(at(box(0.38, 0.17, 0.46, acc), 0, -0.715, 0.05));
+      });
+      body.add(at(tint(box(0.72, 0.6, 0.42, main, null, true)), 0, 0.17, 0));                 // torso
+      body.add(at(box(0.5, 0.32, 0.06, acc), 0, 0.24, 0.23));                                   // chest plate
+      body.add(at(box(0.12, 0.12, 0.04, glow, glow), 0, 0.24, 0.27));                           // glowing core
+      body.add(at(box(0.74, 0.1, 0.44, dark), 0, -0.13, 0));                                     // belt
+      body.add(at(box(0.5, 0.42, 0.14, dark), 0, 0.2, -0.27));                                   // backpack
+      var shL = joint(0.47, 0.44), shR = joint(-0.47, 0.44);
+      [shL, shR].forEach(function (sh) {
+        sh.add(at(box(0.32, 0.16, 0.36, acc), 0, 0.05, 0));                                       // shoulder pad
+        sh.add(at(tint(box(0.22, 0.26, 0.24, main, null, true)), 0, -0.15, 0)); sh.add(at(box(0.2, 0.08, 0.22, dark), 0, -0.32, 0));
+        sh.add(at(box(0.24, 0.2, 0.26, metal), 0, -0.44, 0)); sh.add(at(box(0.3, 0.22, 0.3, dark), 0, -0.63, 0));   // forearm, glove
+      });
+      if (o.item === 'blaster') {   // arm cannon: a big cube on the right fist, the muzzle glows (forward when aiming)
+        var gc = o.itemColor || '#7df9ff';
+        shR.add(at(box(0.38, 0.36, 0.38, dark), 0, -0.78, 0.02)); shR.add(at(box(0.3, 0.04, 0.3, gc, gc), 0, -0.97, 0.02));
+        shR.add(at(box(0.4, 0.06, 0.4, acc), 0, -0.62, 0.02));
+      }
+      var neck = joint(0, 0.5);
+      neck.add(at(tint(box(0.56, 0.46, 0.5, main, null, true)), 0, 0.25, 0));                   // head
+      neck.add(at(box(0.6, 0.08, 0.54, metal), 0, 0.5, 0));                                      // helmet rim
+      neck.add(at(box(0.46, 0.17, 0.03, '#1b1b2f'), 0, 0.27, 0.255));                            // visor
+      [-0.11, 0.11].forEach(function (x) { neck.add(at(box(0.12, 0.07, 0.02, glow, glow), x, 0.28, 0.272)); });   // eyes
+      neck.add(at(box(0.18, 0.04, 0.02, dark), 0, 0.1, 0.255));                                  // mouth grille
+      [-0.3, 0.3].forEach(function (x) { neck.add(at(box(0.06, 0.18, 0.18, dark), x, 0.26, 0)); });   // ear discs
+      neck.add(at(box(0.04, 0.18, 0.04, metal), 0.18, 0.62, -0.05)); neck.add(at(box(0.08, 0.08, 0.08, glow, glow), 0.18, 0.74, -0.05));
       root.userData.rig = { body: body, hipL: hipL, hipR: hipR, shL: shL, shR: shR, neck: neck };
       root.scale.setScalar(o.scale || 1);
       return root;
@@ -924,10 +980,10 @@
     // list: [{ x, y, z, c } | { x, y, z, b: 'grass' }] — cube center and color or block; o.size — edge (m). Returns { remove() }; UB.clear3d removes it too.
     var vox = [];
     // ---- school world blocks (shared package @upbilim/blocks): the same catalog and pixel textures as in the UpBilim world ----
-    var BLOCK_DEFS = [{"id":0,"key":"air","top":"#000","side":"#000","solid":false,"clear":true,"glow":false,"cross":false},{"id":1,"key":"grass","top":"#6FBF4B","side":"#8B6A4E","solid":true,"clear":false,"glow":false,"cross":false},{"id":2,"key":"dirt","top":"#8B6A4E","side":"#8B6A4E","solid":true,"clear":false,"glow":false,"cross":false},{"id":3,"key":"stone","top":"#9AA0A6","side":"#8C9298","solid":true,"clear":false,"glow":false,"cross":false},{"id":4,"key":"sand","top":"#E9D9A6","side":"#E3D29B","solid":true,"clear":false,"glow":false,"cross":false},{"id":5,"key":"planks","top":"#C49A6C","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false},{"id":6,"key":"log","top":"#C9A77A","side":"#7A5536","solid":true,"clear":false,"glow":false,"cross":false},{"id":7,"key":"leaves","top":"#3F9E4F","side":"#3A9148","solid":true,"clear":false,"glow":false,"cross":false},{"id":8,"key":"white","top":"#F4F1EC","side":"#EAE6DF","solid":true,"clear":false,"glow":false,"cross":false},{"id":9,"key":"path","top":"#B8AE9C","side":"#A89E8B","solid":true,"clear":false,"glow":false,"cross":false},{"id":10,"key":"brick","top":"#B5533C","side":"#A94B35","solid":true,"clear":false,"glow":false,"cross":false},{"id":11,"key":"glass","top":"#CFE8FB","side":"#CFE8FB","solid":true,"clear":true,"glow":false,"cross":false},{"id":12,"key":"purple","top":"#AF58EA","side":"#9E4BD6","solid":true,"clear":false,"glow":false,"cross":false},{"id":13,"key":"yellow","top":"#F2C94C","side":"#E6BB3C","solid":true,"clear":false,"glow":false,"cross":false},{"id":14,"key":"blue","top":"#2F80ED","side":"#276FD1","solid":true,"clear":false,"glow":false,"cross":false},{"id":15,"key":"red","top":"#E8484A","side":"#D23E40","solid":true,"clear":false,"glow":false,"cross":false},{"id":16,"key":"green","top":"#27AE60","side":"#219653","solid":true,"clear":false,"glow":false,"cross":false},{"id":17,"key":"black","top":"#2E2A33","side":"#27232C","solid":true,"clear":false,"glow":false,"cross":false},{"id":18,"key":"books","top":"#C49A6C","side":"#8C5A3C","solid":true,"clear":false,"glow":false,"cross":false},{"id":19,"key":"water","top":"#5AA9E6","side":"#4F9BD9","solid":false,"clear":true,"glow":false,"cross":false},{"id":20,"key":"flowers","top":"#F0617A","side":"#6FBF4B","solid":false,"clear":false,"glow":false,"cross":true},{"id":21,"key":"lamp","top":"#FFE58A","side":"#FFD95A","solid":true,"clear":false,"glow":true,"cross":false},{"id":22,"key":"gold","top":"#F5B301","side":"#E0A300","solid":true,"clear":false,"glow":false,"cross":false},{"id":23,"key":"bedrock","top":"#4A4F57","side":"#4A4F57","solid":true,"clear":false,"glow":false,"cross":false},{"id":24,"key":"school","top":"#F2C94C","side":"#EAD9A0","solid":true,"clear":false,"glow":false,"cross":false},{"id":25,"key":"tallgrass","top":"#5DAE3E","side":"#5DAE3E","solid":false,"clear":false,"glow":false,"cross":true},{"id":26,"key":"cobble","top":"#8A8F95","side":"#8A8F95","solid":true,"clear":false,"glow":false,"cross":false},{"id":27,"key":"sandstone","top":"#E3CB8F","side":"#D9BE7E","solid":true,"clear":false,"glow":false,"cross":false},{"id":28,"key":"snow","top":"#FBFDFF","side":"#EEF4FA","solid":true,"clear":false,"glow":false,"cross":false},{"id":29,"key":"orange","top":"#F2994A","side":"#E0873A","solid":true,"clear":false,"glow":false,"cross":false},{"id":30,"key":"pink","top":"#F497C0","side":"#E585B0","solid":true,"clear":false,"glow":false,"cross":false},{"id":31,"key":"ice","top":"#A9D8F5","side":"#9CCDEE","solid":true,"clear":true,"glow":false,"cross":false},{"id":32,"key":"torch","top":"#FFB547","side":"#8B6A4E","solid":false,"clear":false,"glow":true,"cross":true},{"id":33,"key":"start","top":"#27AE60","side":"#219653","solid":true,"clear":false,"glow":true,"cross":false},{"id":34,"key":"finish","top":"#FFFFFF","side":"#27221A","solid":true,"clear":false,"glow":true,"cross":false},{"id":35,"key":"checkpoint","top":"#F2C94C","side":"#E0A300","solid":true,"clear":false,"glow":false,"cross":false},{"id":36,"key":"lava","top":"#FF6A1A","side":"#E24A0E","solid":true,"clear":false,"glow":true,"cross":false},{"id":37,"key":"bounce","top":"#7ED957","side":"#5BBF3A","solid":true,"clear":false,"glow":false,"cross":false},{"id":38,"key":"question","top":"#8E44D6","side":"#7B35C1","solid":true,"clear":false,"glow":true,"cross":false},{"id":39,"key":"lift","top":"#A7B3C2","side":"#8794A5","solid":true,"clear":false,"glow":false,"cross":false},{"id":40,"key":"door","top":"#B98C5C","side":"#A0703F","solid":true,"clear":false,"glow":false,"cross":false},{"id":41,"key":"button","top":"#E8484A","side":"#9AA0A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":42,"key":"lever","top":"#8A8F95","side":"#8A8F95","solid":true,"clear":false,"glow":false,"cross":false},{"id":43,"key":"leverOn","top":"#27AE60","side":"#8A8F95","solid":true,"clear":false,"glow":true,"cross":false},{"id":44,"key":"chair","top":"#C44B4B","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false},{"id":45,"key":"stove","top":"#2E2A33","side":"#DDE1E6","solid":true,"clear":false,"glow":false,"cross":false},{"id":46,"key":"fridge","top":"#F4F6F8","side":"#E9EDF1","solid":true,"clear":false,"glow":false,"cross":false},{"id":47,"key":"sink","top":"#D9D2C5","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":48,"key":"counter","top":"#D9D2C5","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":49,"key":"wallCabinet","top":"#8DB497","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":50,"key":"table","top":"#C49A6C","side":"#A87B4F","solid":true,"clear":false,"glow":false,"cross":false},{"id":51,"key":"tiles","top":"#F7F8FA","side":"#F7F8FA","solid":true,"clear":false,"glow":false,"cross":false},{"id":52,"key":"checker","top":"#2E2A33","side":"#F4F1EC","solid":true,"clear":false,"glow":false,"cross":false},{"id":53,"key":"asphalt","top":"#46494F","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":54,"key":"roadWhite","top":"#F2F2EE","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":55,"key":"roadYellow","top":"#F2C230","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":56,"key":"sidewalk","top":"#C9C6BF","side":"#B3AFA7","solid":true,"clear":false,"glow":false,"cross":false},{"id":57,"key":"bikeLane","top":"#B8574A","side":"#9C4A3F","solid":true,"clear":false,"glow":false,"cross":false}];
+    var BLOCK_DEFS = [{"id":0,"key":"air","top":"#000","side":"#000","solid":false,"clear":true,"glow":false,"cross":false},{"id":1,"key":"grass","top":"#6FBF4B","side":"#8B6A4E","solid":true,"clear":false,"glow":false,"cross":false},{"id":2,"key":"dirt","top":"#8B6A4E","side":"#8B6A4E","solid":true,"clear":false,"glow":false,"cross":false},{"id":3,"key":"stone","top":"#9AA0A6","side":"#8C9298","solid":true,"clear":false,"glow":false,"cross":false},{"id":4,"key":"sand","top":"#E9D9A6","side":"#E3D29B","solid":true,"clear":false,"glow":false,"cross":false},{"id":5,"key":"planks","top":"#C49A6C","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false},{"id":6,"key":"log","top":"#C9A77A","side":"#7A5536","solid":true,"clear":false,"glow":false,"cross":false},{"id":7,"key":"leaves","top":"#3F9E4F","side":"#3A9148","solid":true,"clear":false,"glow":false,"cross":false},{"id":8,"key":"white","top":"#F4F1EC","side":"#EAE6DF","solid":true,"clear":false,"glow":false,"cross":false},{"id":9,"key":"path","top":"#B8AE9C","side":"#A89E8B","solid":true,"clear":false,"glow":false,"cross":false},{"id":10,"key":"brick","top":"#B5533C","side":"#A94B35","solid":true,"clear":false,"glow":false,"cross":false},{"id":11,"key":"glass","top":"#CFE8FB","side":"#CFE8FB","solid":true,"clear":true,"glow":false,"cross":false},{"id":12,"key":"purple","top":"#AF58EA","side":"#9E4BD6","solid":true,"clear":false,"glow":false,"cross":false},{"id":13,"key":"yellow","top":"#F2C94C","side":"#E6BB3C","solid":true,"clear":false,"glow":false,"cross":false},{"id":14,"key":"blue","top":"#2F80ED","side":"#276FD1","solid":true,"clear":false,"glow":false,"cross":false},{"id":15,"key":"red","top":"#E8484A","side":"#D23E40","solid":true,"clear":false,"glow":false,"cross":false},{"id":16,"key":"green","top":"#27AE60","side":"#219653","solid":true,"clear":false,"glow":false,"cross":false},{"id":17,"key":"black","top":"#2E2A33","side":"#27232C","solid":true,"clear":false,"glow":false,"cross":false},{"id":18,"key":"books","top":"#C49A6C","side":"#8C5A3C","solid":true,"clear":false,"glow":false,"cross":false},{"id":19,"key":"water","top":"#5AA9E6","side":"#4F9BD9","solid":false,"clear":true,"glow":false,"cross":false},{"id":20,"key":"flowers","top":"#F0617A","side":"#6FBF4B","solid":false,"clear":false,"glow":false,"cross":true},{"id":21,"key":"lamp","top":"#FFE58A","side":"#FFD95A","solid":true,"clear":false,"glow":true,"cross":false},{"id":22,"key":"gold","top":"#F5B301","side":"#E0A300","solid":true,"clear":false,"glow":false,"cross":false},{"id":23,"key":"bedrock","top":"#4A4F57","side":"#4A4F57","solid":true,"clear":false,"glow":false,"cross":false},{"id":24,"key":"school","top":"#F2C94C","side":"#EAD9A0","solid":true,"clear":false,"glow":false,"cross":false},{"id":25,"key":"tallgrass","top":"#5DAE3E","side":"#5DAE3E","solid":false,"clear":false,"glow":false,"cross":true},{"id":26,"key":"cobble","top":"#8A8F95","side":"#8A8F95","solid":true,"clear":false,"glow":false,"cross":false},{"id":27,"key":"sandstone","top":"#E3CB8F","side":"#D9BE7E","solid":true,"clear":false,"glow":false,"cross":false},{"id":28,"key":"snow","top":"#FBFDFF","side":"#EEF4FA","solid":true,"clear":false,"glow":false,"cross":false},{"id":29,"key":"orange","top":"#F2994A","side":"#E0873A","solid":true,"clear":false,"glow":false,"cross":false},{"id":30,"key":"pink","top":"#F497C0","side":"#E585B0","solid":true,"clear":false,"glow":false,"cross":false},{"id":31,"key":"ice","top":"#A9D8F5","side":"#9CCDEE","solid":true,"clear":true,"glow":false,"cross":false},{"id":32,"key":"torch","top":"#FFB547","side":"#8B6A4E","solid":false,"clear":false,"glow":true,"cross":true},{"id":33,"key":"start","top":"#27AE60","side":"#219653","solid":true,"clear":false,"glow":true,"cross":false},{"id":34,"key":"finish","top":"#FFFFFF","side":"#27221A","solid":true,"clear":false,"glow":true,"cross":false},{"id":35,"key":"checkpoint","top":"#F2C94C","side":"#E0A300","solid":true,"clear":false,"glow":false,"cross":false},{"id":36,"key":"lava","top":"#FF6A1A","side":"#E24A0E","solid":true,"clear":false,"glow":true,"cross":false},{"id":37,"key":"bounce","top":"#7ED957","side":"#5BBF3A","solid":true,"clear":false,"glow":false,"cross":false},{"id":38,"key":"question","top":"#8E44D6","side":"#7B35C1","solid":true,"clear":false,"glow":true,"cross":false},{"id":39,"key":"lift","top":"#A7B3C2","side":"#8794A5","solid":true,"clear":false,"glow":false,"cross":false},{"id":40,"key":"door","top":"#B98C5C","side":"#A0703F","solid":true,"clear":false,"glow":false,"cross":false},{"id":41,"key":"button","top":"#E8484A","side":"#9AA0A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":42,"key":"lever","top":"#8A8F95","side":"#8A8F95","solid":true,"clear":false,"glow":false,"cross":false},{"id":43,"key":"leverOn","top":"#27AE60","side":"#8A8F95","solid":true,"clear":false,"glow":true,"cross":false},{"id":44,"key":"chair","top":"#C44B4B","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false},{"id":45,"key":"stove","top":"#2E2A33","side":"#DDE1E6","solid":true,"clear":false,"glow":false,"cross":false},{"id":46,"key":"fridge","top":"#F4F6F8","side":"#E9EDF1","solid":true,"clear":false,"glow":false,"cross":false},{"id":47,"key":"sink","top":"#D9D2C5","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":48,"key":"counter","top":"#D9D2C5","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":49,"key":"wallCabinet","top":"#8DB497","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":50,"key":"table","top":"#C49A6C","side":"#A87B4F","solid":true,"clear":false,"glow":false,"cross":false},{"id":51,"key":"tiles","top":"#F7F8FA","side":"#F7F8FA","solid":true,"clear":false,"glow":false,"cross":false},{"id":52,"key":"checker","top":"#2E2A33","side":"#F4F1EC","solid":true,"clear":false,"glow":false,"cross":false},{"id":53,"key":"asphalt","top":"#46494F","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":54,"key":"roadWhite","top":"#F2F2EE","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":55,"key":"roadYellow","top":"#F2C230","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":56,"key":"sidewalk","top":"#C9C6BF","side":"#B3AFA7","solid":true,"clear":false,"glow":false,"cross":false},{"id":57,"key":"bikeLane","top":"#B8574A","side":"#9C4A3F","solid":true,"clear":false,"glow":false,"cross":false},{"id":58,"key":"sandstoneBricks","top":"#E2C48E","side":"#D6B47A","solid":true,"clear":false,"glow":false,"cross":false},{"id":59,"key":"shutter","top":"#8D96A0","side":"#7E8792","solid":true,"clear":false,"glow":false,"cross":false},{"id":60,"key":"windowFrame","top":"#F4F1EC","side":"#CFE8FB","solid":true,"clear":true,"glow":false,"cross":false},{"id":61,"key":"crate","top":"#C49A6C","side":"#B07E4A","solid":true,"clear":false,"glow":false,"cross":false},{"id":62,"key":"metal","top":"#A7B3C2","side":"#98A4B3","solid":true,"clear":false,"glow":false,"cross":false},{"id":63,"key":"glowCube","top":"#7DF9FF","side":"#4CC9F0","solid":true,"clear":false,"glow":true,"cross":false},{"id":64,"key":"slabSandstone","top":"#E3CB8F","side":"#D9BE7E","solid":true,"clear":false,"glow":false,"cross":false,"tex":"sandstone","boxes":[[0,0,0,1,0.5,1]]},{"id":65,"key":"slabPlanks","top":"#C49A6C","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false,"tex":"planks","boxes":[[0,0,0,1,0.5,1]]},{"id":66,"key":"slabStone","top":"#8A8F95","side":"#8A8F95","solid":true,"clear":false,"glow":false,"cross":false,"tex":"cobble","boxes":[[0,0,0,1,0.5,1]]},{"id":67,"key":"stairsSandstone","top":"#E3CB8F","side":"#D9BE7E","solid":true,"clear":false,"glow":false,"cross":false,"tex":"sandstone","boxes":[[0,0,0,1,0.5,1],[0,0.5,0,1,1,0.5]]},{"id":68,"key":"stairsSandstone1","top":"#E3CB8F","side":"#D9BE7E","solid":true,"clear":false,"glow":false,"cross":false,"tex":"sandstone","boxes":[[0,0,0,1,0.5,1],[0.5,0.5,0,1,1,1]],"base":67},{"id":69,"key":"stairsSandstone2","top":"#E3CB8F","side":"#D9BE7E","solid":true,"clear":false,"glow":false,"cross":false,"tex":"sandstone","boxes":[[0,0,0,1,0.5,1],[0,0.5,0.5,1,1,1]],"base":67},{"id":70,"key":"stairsSandstone3","top":"#E3CB8F","side":"#D9BE7E","solid":true,"clear":false,"glow":false,"cross":false,"tex":"sandstone","boxes":[[0,0,0,1,0.5,1],[0,0.5,0,0.5,1,1]],"base":67},{"id":71,"key":"stairsPlanks","top":"#C49A6C","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false,"tex":"planks","boxes":[[0,0,0,1,0.5,1],[0,0.5,0,1,1,0.5]]},{"id":72,"key":"stairsPlanks1","top":"#C49A6C","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false,"tex":"planks","boxes":[[0,0,0,1,0.5,1],[0.5,0.5,0,1,1,1]],"base":71},{"id":73,"key":"stairsPlanks2","top":"#C49A6C","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false,"tex":"planks","boxes":[[0,0,0,1,0.5,1],[0,0.5,0.5,1,1,1]],"base":71},{"id":74,"key":"stairsPlanks3","top":"#C49A6C","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false,"tex":"planks","boxes":[[0,0,0,1,0.5,1],[0,0.5,0,0.5,1,1]],"base":71}];
     // the function's source from the package: TypeScript loaders (tsx, esbuild with keepNames) insert __name calls into it — here it does nothing
     var __name = function (t) { return t; };
-    var paintBlockTiles = function paintBlockTiles(blocks                                                                       , cols        , T        , d                   , width        )       {
+    var paintBlockTiles = function paintBlockTiles(blocks                                                                                     , cols        , T        , d                   , width        )       {
                                       
   const hex = (h        )      => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
   const mul = (c     , k        )      => [c[0] * k, c[1] * k, c[2] * k];
@@ -941,14 +997,14 @@
                                         
                                                                                                                                               
 
-  function paint(t      , b                                                        , face      ) {
+  function paint(t      , b                                                                      , face      ) {
     const S = 16, top = hex(b.top), side = hex(b.side), base = face === 'top' ? top : side, { set, fill, r } = t;
     const wood = (c     ) => {                        // planks: 4-pixel bands, joints, grain
       fill(c, 0.08);
       for (let y = 0; y < S; y++) { if (y % 4 === 3) for (let x = 0; x < S; x++) set(x, y, mul(c, 0.72)); }
       for (let row = 0; row < 4; row++) { const sx = Math.floor(r() * S); for (let y = row * 4; y < row * 4 + 3; y++) set(sx, y, mul(c, 0.8)); }
     };
-    switch (b.key) {
+    switch (b.tex || b.key) {
       case 'grass':
         if (face === 'top') { fill(top, 0.22); for (let i = 0; i < 18; i++) set(r() * S | 0, r() * S | 0, mul(top, 0.8)); }
         else if (face === 'side') {
@@ -1246,6 +1302,56 @@
         } else for (let y = 1; y < S - 1; y++) { set(7, y, mul(base, 0.62)); set(8, y, mul(base, 1.12)); }
         break;
       }
+      case 'sandstoneBricks': {
+        // big sandstone blocks: 2×2 per tile, light top edge and dark seams like a desert wall
+        fill(base, 0.06);
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          const bx = (x + (y >= 8 ? 4 : 0)) % 8, by = y % 8;
+          if (bx === 7 || by === 7) set(x, y, mul(base, 0.72)); else if (by === 0 || bx === 0) set(x, y, mul(base, 1.1));
+        }
+        break;
+      }
+      case 'shutter': {
+        // a steel roller shutter: horizontal slats, a dark frame and a handle at the bottom
+        fill(base, 0.04);
+        if (face !== 'top') {
+          for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if (y % 3 === 2) set(x, y, mul(base, 0.75));
+          for (let i = 0; i < S; i++) { set(0, i, mul(base, 0.55)); set(S - 1, i, mul(base, 0.55)); set(i, 0, mul(base, 0.55)); }
+          for (let x = 6; x <= 9; x++) set(x, 13, [60, 64, 70]);
+        }
+        break;
+      }
+      case 'windowFrame': {
+        // a white frame with a cross and bluish glass (the glass is see-through)
+        fill(hex(b.side), 0.03, 110);
+        const fr = hex(b.top);
+        for (let i = 0; i < S; i++) { set(i, 0, fr); set(i, 1, fr); set(i, S - 1, fr); set(i, S - 2, fr); set(0, i, fr); set(1, i, fr); set(S - 1, i, fr); set(S - 2, i, fr); set(7, i, fr); set(8, i, fr); set(i, 7, fr); set(i, 8, fr); }
+        for (let i = 0; i < 3; i++) { set(3 + i, 5 - i, [255, 255, 255], 200); set(11 + i, 13 - i, [255, 255, 255], 170); }
+        break;
+      }
+      case 'crate': {
+        // a wooden crate: plank frame and a diagonal brace
+        wood(base);
+        for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.6)); set(i, S - 1, mul(base, 0.6)); set(0, i, mul(base, 0.6)); set(S - 1, i, mul(base, 0.6)); set(i, 1, mul(base, 0.85)); set(1, i, mul(base, 0.85)); }
+        for (let i = 2; i < S - 2; i++) { set(i, i, mul(base, 0.68)); set(i + 1, i, mul(base, 0.8)); }
+        break;
+      }
+      case 'metal': {
+        // a steel plate with rivets in the corners and a soft highlight
+        fill(base, 0.04);
+        for (let i = 0; i < S; i++) { set(i, 0, mul(base, 1.15)); set(0, i, mul(base, 1.12)); set(i, S - 1, mul(base, 0.7)); set(S - 1, i, mul(base, 0.72)); }
+        for (const [x, y] of [[2, 2], [13, 2], [2, 13], [13, 13]]         ) { set(x, y, mul(base, 0.6)); set(x, y - 1, mul(base, 1.25)); }
+        for (let i = 0; i < 5; i++) set(4 + i, 4, mul(base, 1.2));
+        break;
+      }
+      case 'glowCube': {
+        // a glowing cube: a bright core, a darker frame and a light ring (like the blaster cube in the reference)
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
+          const d = Math.max(Math.abs(x - 7.5), Math.abs(y - 7.5)), r = Math.hypot(x - 7.5, y - 7.5);
+          set(x, y, d > 6.5 ? mul(base, 0.45) : r < 3.2 ? [240, 255, 255] : r < 4.6 ? mul(top, 1.15) : mul(base, 0.85));
+        }
+        break;
+      }
       case 'question': {
         // a purple tile with a white "?"
         fill(base, 0.06);
@@ -1280,6 +1386,8 @@
 };
     var BLOCK_BY = {}; BLOCK_DEFS.forEach(function (b) { BLOCK_BY[b.key] = b; BLOCK_BY[String(b.id)] = b; });
     UB.blocks = BLOCK_DEFS.filter(function (b) { return b.id; }).map(function (b) { return b.key; });
+    // colors of a block (for maps and HUD): { top, side } or null
+    UB.blockColor = function (key) { var b = BLOCK_BY[String(key)]; return b && b.id ? { top: b.top, side: b.side } : null; };
     var ATL_C = 16, ATL_T = 16, ATL_R = Math.ceil(BLOCK_DEFS.length * 3 / 16), blockAtlas;
     // atlas: tile 0 ("air" has none) is white: plain colored cubes in the same mesh are tinted through it
     var getAtlas = function () {
@@ -1330,7 +1438,7 @@
         var gx = (v.x - x0) / size, gy = (v.y - y0) / size, gz = (v.z - z0) / size, rx = Math.round(gx), ry = Math.round(gy), rz = Math.round(gz);
         if (Math.abs(gx - rx) < 0.01 && Math.abs(gy - ry) < 0.01 && Math.abs(gz - rz) < 0.01) {
           cells[i] = [rx, ry, rz];
-          if (!(df && df.cross)) grid[rx + ',' + ry + ',' + rz] = df && df.clear ? 1000 + df.id : 1;   // 1 — an opaque cube
+          if (!(df && (df.cross || df.boxes))) grid[rx + ',' + ry + ',' + rz] = df && df.clear ? 1000 + df.id : 1;   // 1 — an opaque cube (slabs and stairs hide nothing)
         }
       }
       var A = textured ? getAtlas() : null;
@@ -1359,6 +1467,28 @@
           [[-a, -a, a, a], [a, -a, -a, a], [a, a, -a, -a], [-a, a, a, -a]].forEach(function (d4) {
             quad(bfc, [[w.x + d4[0], w.y - hs, w.z + d4[1]], [w.x + d4[2], w.y - hs, w.z + d4[3]], [w.x + d4[2], w.y + hs, w.z + d4[3]], [w.x + d4[0], w.y + hs, w.z + d4[1]]],
               [0, 1, 0], [cc, cc, cc, cc], [tileUV(t1, 0, 0), tileUV(t1, 1, 0), tileUV(t1, 1, 1), tileUV(t1, 0, 1)], false);
+          });
+          continue;
+        }
+        if (df2 && df2.boxes) {
+          // a slab or stairs: each part is its own box; a face on the cell edge next to an opaque cube is hidden, and so is
+          // the bottom face of the upper part (it lies inside the lower one); the tile is cropped to the part's size
+          var bfs = bufOf(w, 'opaque'), cs = [col.r, col.g, col.b];
+          df2.boxes.forEach(function (bx) {
+            FACES.forEach(function (F2) {
+              if (F2[1] < 0 && bx[1] > 0) return;
+              var lo = [bx[0], bx[1], bx[2]], hi = [bx[3], bx[4], bx[5]], ax = F2[0] ? 0 : F2[1] ? 1 : 2, sgn = F2[ax];
+              if (c && (sgn > 0 ? hi[ax] === 1 : lo[ax] === 0) && grid[(c[0] + F2[0]) + ',' + (c[1] + F2[1]) + ',' + (c[2] + F2[2])] === 1) return;
+              var pts2 = [], uvs2 = [], tile2 = df2.id * 3 + (F2[1] > 0 ? 0 : F2[1] < 0 ? 2 : 1);
+              for (var q2 = 0; q2 < 4; q2++) {
+                var su2 = q2 === 1 || q2 === 2 ? 1 : -1, sv2 = q2 >= 2 ? 1 : -1, lc = [0, 0, 0];
+                for (var k3 = 0; k3 < 3; k3++) { var dirv = F2[k3] + su2 * F2[3 + k3] + sv2 * F2[6 + k3]; lc[k3] = dirv > 0 ? hi[k3] : lo[k3]; }
+                pts2.push([w.x + (lc[0] - 0.5) * size, w.y + (lc[1] - 0.5) * size, w.z + (lc[2] - 0.5) * size]);
+                var uu2 = F2[0] > 0 ? 1 - lc[2] : F2[0] < 0 ? lc[2] : F2[2] > 0 ? lc[0] : F2[2] < 0 ? 1 - lc[0] : lc[0], vv3 = F2[1] !== 0 ? 1 - lc[2] : lc[1];
+                uvs2.push(tileUV(tile2, uu2, vv3));
+              }
+              quad(bfs, pts2, [F2[0], F2[1], F2[2]], [cs, cs, cs, cs], uvs2, false);
+            });
           });
           continue;
         }
@@ -1415,9 +1545,14 @@
       });
       scene.add(grp);
       // physics gets only solid ones (water, flowers and torches are walk-through)
-      var solidList = [], solidCells = {}; for (i = 0; i < n; i++) if (!defs[i] || (defs[i].solid && !defs[i].cross)) { solidList.push(list[i]); if (cells[i]) solidCells[cells[i].join(',')] = 1; }
-      var h = { mesh: grp, solid: !!o.solid, list: solidList, cells: solidCells, o: [x0, y0, z0], size: size, col: null,
-        remove: function () { if (h.col && pw) pw.removeCollider(h.col, true); h.col = null; scene.remove(grp); geos.forEach(function (g3) { g3.dispose(); }); Object.keys(mats).forEach(function (k) { mats[k].dispose(); }); var k = vox.indexOf(h); if (k >= 0) vox.splice(k, 1); } };
+      // slabs and stairs: their parts instead of the whole cell (cells[key] = the box list; plain solid cubes = 1)
+      var solidList = [], solidCells = {}, shapeList = [];
+      for (i = 0; i < n; i++) if (!defs[i] || (defs[i].solid && !defs[i].cross)) {
+        if (defs[i] && defs[i].boxes) { shapeList.push({ x: list[i].x, y: list[i].y, z: list[i].z, boxes: defs[i].boxes }); if (cells[i]) solidCells[cells[i].join(',')] = defs[i].boxes; continue; }
+        solidList.push(list[i]); if (cells[i]) solidCells[cells[i].join(',')] = 1;
+      }
+      var h = { mesh: grp, solid: !!o.solid, list: solidList, shapes: shapeList, cells: solidCells, o: [x0, y0, z0], size: size, col: null, cols: [],
+        remove: function () { if (h.col && pw) pw.removeCollider(h.col, true); if (pw) h.cols.forEach(function (c2) { pw.removeCollider(c2, true); }); h.col = null; h.cols = []; scene.remove(grp); geos.forEach(function (g3) { g3.dispose(); }); Object.keys(mats).forEach(function (k) { mats[k].dispose(); }); var k = vox.indexOf(h); if (k >= 0) vox.splice(k, 1); } };
       vox.push(h); if (pw && h.solid) voxCollider(h); return h;
     };
     UB.clear3d = function () { ents.slice().forEach(function (e) { if (!e.ground) e.remove(); }); vox.slice().forEach(function (v) { v.remove(); }); players.forEach(unplayer); players = []; fx.forEach(function (f) { scene.remove(f.m); }); fx = []; effects.slice().forEach(function (f) { f.remove(); }); loops.slice().forEach(function (l) { l.stop(); }); };
@@ -1707,7 +1842,7 @@
     // Player: walking relative to the camera (WASD / arrows / joystick), jump (Space / button), gravity, collisions with solid
     UB.player3d = function (e, o) {
       o = o || {};
-      var pc = { e: e, speed: o.speed || 7, jump: o.jump || 10, gravity: o.gravity || 28, onGround: false, enabled: true };
+      var pc = { e: e, speed: o.speed != null ? o.speed : 7, jump: o.jump != null ? o.jump : 10, gravity: o.gravity != null ? o.gravity : 28, onGround: false, enabled: true };
       players.push(pc); e.vx = e.vy = e.vz = 0; e._isPlayer = true; e._pc = pc;
       if ((e.shape === 'character' || e.shape === 'model') && !e.rotY) e.rotY = Math.PI;   // the hero stands with its back to the camera: forward is −z
       if (touch && !padMade) makePad();
@@ -1734,21 +1869,39 @@
     var camYaw = function () { return camera ? Math.atan2(camera.position.x - camTargetX, camera.position.z - camTargetZ) : 0; };
     var camTargetX = 0, camTargetZ = 0;
     var resolve = function (e, s, axis) {
+      // a low obstacle (a slab, a stair step, anything up to 0.55 above the feet) — the hero steps onto it instead of stopping
+      if (axis !== 'y' && e.vy <= 0.01 && e._isPlayer && (s.y + s.h / 2) - (e.y - e.h / 2) <= 0.55) { e.y = s.y + (s.h + e.h) / 2 + 0.001; return; }
       if (axis === 'y') { if (e.vy <= 0 && e.y > s.y) { e.y = s.y + (s.h + e.h) / 2; e.vy = 0; e._ground = true; } else if (e.vy > 0) { e.y = s.y - (s.h + e.h) / 2; e.vy = 0; } }
       else if (axis === 'x') e.x = e.x > s.x ? s.x + (s.w + e.w) / 2 : s.x - (s.w + e.w) / 2;
       else e.z = e.z > s.z ? s.z + (s.d + e.d) / 2 : s.z - (s.d + e.d) / 2;
     };
     var cellBox = { x: 0, y: 0, z: 0, w: 1, h: 1, d: 1 };
     var collide = function (e, axis) {
-      for (var i = 0; i < ents.length; i++) { var s = ents[i]; if (s !== e && s.solid && UB.hit3d(e, s)) resolve(e, s, axis); }
+      for (var i = 0; i < ents.length; i++) {
+        var s = ents[i]; if (s === e || !s.solid || !UB.hit3d(e, s)) continue;
+        if (!s.parts) { resolve(e, s, axis); continue; }
+        // a slab / stairs box: collide with its parts (unit boxes scaled to the entity)
+        for (var qi = 0; qi < s.parts.length; qi++) {
+          var qb = s.parts[qi];
+          cellBox.x = s.x + ((qb[0] + qb[3]) / 2 - 0.5) * s.w; cellBox.y = s.y + ((qb[1] + qb[4]) / 2 - 0.5) * s.h; cellBox.z = s.z + ((qb[2] + qb[5]) / 2 - 0.5) * s.d;
+          cellBox.w = (qb[3] - qb[0]) * s.w; cellBox.h = (qb[4] - qb[1]) * s.h; cellBox.d = (qb[5] - qb[2]) * s.d;
+          if (UB.hit3d(e, cellBox)) resolve(e, cellBox, axis);
+        }
+      }
       // a cube world (UB.voxels3d with solid: true): solid cells around the hero act as solid boxes (even without physics)
       for (var vi = 0; vi < vox.length; vi++) {
         var hv = vox[vi]; if (!hv.solid || !hv.cells) continue;
         var sz = hv.size, o = hv.o, r = function (c, k) { return Math.round((c - o[k]) / sz); };
         for (var cx = r(e.x - e.w / 2, 0); cx <= r(e.x + e.w / 2, 0); cx++) for (var cy = r(e.y - e.h / 2, 1); cy <= r(e.y + e.h / 2, 1); cy++) for (var cz = r(e.z - e.d / 2, 2); cz <= r(e.z + e.d / 2, 2); cz++) {
-          if (!hv.cells[cx + ',' + cy + ',' + cz]) continue;
-          cellBox.x = o[0] + cx * sz; cellBox.y = o[1] + cy * sz; cellBox.z = o[2] + cz * sz; cellBox.w = cellBox.h = cellBox.d = sz;
-          if (UB.hit3d(e, cellBox)) resolve(e, cellBox, axis);
+          var cv = hv.cells[cx + ',' + cy + ',' + cz]; if (!cv) continue;
+          var ccx = o[0] + cx * sz, ccy = o[1] + cy * sz, ccz = o[2] + cz * sz;
+          var parts3 = cv === 1 ? [[0, 0, 0, 1, 1, 1]] : cv;
+          for (var pi3 = 0; pi3 < parts3.length; pi3++) {
+            var b3 = parts3[pi3];
+            cellBox.x = ccx + ((b3[0] + b3[3]) / 2 - 0.5) * sz; cellBox.y = ccy + ((b3[1] + b3[4]) / 2 - 0.5) * sz; cellBox.z = ccz + ((b3[2] + b3[5]) / 2 - 0.5) * sz;
+            cellBox.w = (b3[3] - b3[0]) * sz; cellBox.h = (b3[4] - b3[1]) * sz; cellBox.d = (b3[5] - b3[2]) * sz;
+            if (UB.hit3d(e, cellBox)) resolve(e, cellBox, axis);
+          }
         }
       }
     };
@@ -1799,7 +1952,11 @@
       // cubes on a grid: a cube centered at (i·size) covers [i·size − size/2, i·size + size/2] — shift the collider by half a cube
       var s = h.size, a = new Int32Array(h.list.length * 3);
       h.list.forEach(function (v, i) { a[i * 3] = Math.round(v.x / s); a[i * 3 + 1] = Math.round(v.y / s); a[i * 3 + 2] = Math.round(v.z / s); });
-      h.col = pw.createCollider(R.ColliderDesc.voxels(a, { x: s, y: s, z: s }).setTranslation(-s / 2, -s / 2, -s / 2));
+      if (h.list.length) h.col = pw.createCollider(R.ColliderDesc.voxels(a, { x: s, y: s, z: s }).setTranslation(-s / 2, -s / 2, -s / 2));
+      // slabs and stairs — a box collider per part
+      h.cols = []; (h.shapes || []).forEach(function (v) { v.boxes.forEach(function (b2) {
+        h.cols.push(pw.createCollider(R.ColliderDesc.cuboid((b2[3] - b2[0]) * s / 2, (b2[4] - b2[1]) * s / 2, (b2[5] - b2[2]) * s / 2).setTranslation(v.x + ((b2[0] + b2[3]) / 2 - 0.5) * s, v.y + ((b2[1] + b2[4]) / 2 - 0.5) * s, v.z + ((b2[2] + b2[5]) / 2 - 0.5) * s)));
+      }); });
     };
     var unplayer = function (pc) { if (pc.rb && pw) { delete byCol[pc.col.handle]; pw.removeRigidBody(pc.rb); } pc.rb = pc.col = null; };
     UB.physics = function (o) {

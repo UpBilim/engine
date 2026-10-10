@@ -4,8 +4,8 @@ A tiny game engine for **kids' games and AI-written games**. One script, one glo
 
 - **2D**: canvas scenes, keyboard + mouse + touch, auto-scaling, particles, sounds, music, tweens, cameras, levels from text, platformer physics, enemy AI, HUD, quiz windows.
 - **3D**: a world on [three.js](https://threejs.org): objects, ready-made low-poly models, voxel worlds (thousands of blocks in one draw call), follow / top / **first-person** cameras, phone joystick.
-- **Characters and models**: animated blocky people (Roblox-like, no files needed: walk, run, jump, wave, dance, cheer) and glTF models with skeletal animation.
-- **Blocks**: 58 built-in Minecraft-like blocks with pixel textures drawn by code (grass, stone, brick, glass, water, flowers, lamps, torches…): `UB.voxels3d([{ x, y, z, b: 'grass' }])`, only visible faces are drawn, soft corner shadows.
+- **Characters and models**: animated blocky people (Roblox-like, no files needed: walk, run, jump, wave, dance, cheer), blocky game robots with a visor and a blaster (`style: 'robot'`), and glTF models with skeletal animation.
+- **Blocks**: 75 built-in Minecraft-like blocks with pixel textures drawn by code (grass, stone, brick, glass, water, flowers, lamps, torches, city and sci-fi blocks…): `UB.voxels3d([{ x, y, z, b: 'grass' }])`, only visible faces are drawn, soft corner shadows. **Slabs and stairs** in four directions; the hero walks up them without jumping.
 - **Effects**: GPU particles in one call (`UB.effect3d('fire' | 'smoke' | 'magic' | 'confetti' | 'explosion' | 'snow' | 'rain' | ...)`), soft glow halos, sun shadows, gradient sky, automatic quality for slow devices.
 - **Physics**: real rigid bodies on [Rapier](https://rapier.rs): falling, rolling, stacking, explosions, ropes, hinges, a character that climbs steps and pushes crates.
 - **Genre kits**: `UB.kit.platformer / runner / maze / shooter / quiz`: a whole polished game (menu, levels, stars, best score, phone controls) from one config object.
@@ -18,7 +18,7 @@ It powers the game studio of [UpBilim](https://upbilim.com), where students desc
 ```html
 <!doctype html>
 <meta charset="utf-8">
-<script src="https://cdn.jsdelivr.net/gh/UpBilim/engine@v0.2.0/src/upbilim-engine.js"></script>
+<script src="https://cdn.jsdelivr.net/gh/UpBilim/engine@v0.3.0/src/upbilim-engine.js"></script>
 <script>
 UB.create({ width: 960, height: 540, background: '#10142a' });
 UB.scene('play', {
@@ -95,6 +95,7 @@ Images: `UB.image('Hero', 'hero.png')` before `UB.start(...)`, then `g.image('He
 
 ```js
 const hero = UB.character3d({ shirt: '#ef476f', hat: 'cap' });   // animates by itself: idle / walk / run / jump
+const bot = UB.character3d({ style: 'robot', shirt: '#4361ee', item: 'blaster', x: 3 });
 UB.player3d(hero);
 hero.play('wave', { once: true });                                 // wave, dance, cheer, hit, jump
 UB.loadModel('robot', 'RobotExpressive.glb');                      // before UB.start

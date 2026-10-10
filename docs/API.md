@@ -136,8 +136,15 @@ BLOCKS (the same blocks as the UpBilim school world — kids know them; pixel te
      // solid: true — the hero (UB.player3d) walks and jumps on it, with or without physics; water, flowers, tallgrass and torches are walk-through.
      // blocks: grass dirt stone sand planks log leaves white path brick glass books water flowers lamp gold cobble sandstone snow ice torch
      //   tallgrass purple yellow blue red green black orange pink lava bounce question checker tiles asphalt sidewalk start finish checkpoint
+     //   city & base: sandstoneBricks (big desert wall blocks) shutter (a garage door, decor) windowFrame metal crate glowCube (glowing)
+     //   not cubes: slabSandstone slabPlanks slabStone (half blocks) ; stairsSandstone stairsPlanks — they rise toward −z; add 1/2/3 to the
+     //   name for the other directions: 'stairsSandstone1' rises toward +x, '…2' toward +z, '…3' toward −x. The hero steps up slabs and stairs.
      // { x, y, z, c: '#ff0000' } — a plain colored cube instead of a block. Build terrain in layers: stone, dirt, grass on top; trees = log + leaves.
   UB.spawn({ shape: 'box', block: 'brick', w: 4, h: 2, d: 1, x, y, z, solid: true })   // a box of any size with a block texture (tiles, not stretched)
+     // block: 'slabSandstone' etc. = a real half box; block: 'stairsSandstone'…'3' = a real step (lower half + back upper half) the hero WALKS up
+     // (steps up to 0.55 without jumping). A staircase: one stairs box per step, each 1 higher and 1 further along the rise direction
+     // (stairsSandstone rises toward −z): for (let i = 0; i < 4; i++) UB.spawn({ shape: 'box', block: 'stairsSandstone', x: 0, y: 0.5 + i, z: -i, solid: true })
+     // plus a solid box under each step from the ground. Never fake stairs with full boxes 1 higher each — the hero cannot walk those.
   UB.blocks   // every block name
 SOUND IN 3D (spatial: far sounds are quieter, left/right follow the camera; the ears are on the hero)
   UB.sfx('hit', { at: enemy }) | UB.sfx('coin', { x, y, z })   // a sound from that place in the world (any UB.sfx name)
@@ -145,7 +152,9 @@ SOUND IN 3D (spatial: far sounds are quieter, left/right follow the camera; the 
      // follow: it moves with the object (engine on a car, hum on a robot); no position = background (wind, rain, birds over the whole level)
   s.stop() ; s.volume(0.5)   // UB.clear3d() stops all. Add 1-2 ambient sounds per level (birds in a forest, waves at the sea, wind in the mountains).
 CHARACTERS (animated blocky 3D people, Roblox-like — the default look for the hero and every person in a 3D game)
-  const hero = UB.character3d({ x, z, shirt: '#ef476f', pants: '#3a0ca3', skin: '#f2c79c', hair: '#4a2b0f' | null, hat: 'cap'|'crown'|'party'|'helmet'|'bow'|null, hatColor, shoes, eyes, style: 'robot', scale: 1 })
+  const hero = UB.character3d({ x, z, shirt: '#ef476f', pants: '#3a0ca3', skin: '#f2c79c', hair: '#4a2b0f' | null, hat: 'cap'|'crown'|'party'|'helmet'|'bow'|null, hatColor, shoes, eyes, style: 'robot', scale: 1, item: 'blaster', itemColor })
+     // style 'robot' = a cool blocky game robot (visor with glowing eyes, chest plate, boots): shirt = body color, pants = plates/boots, eyes = glow;
+     // item: 'blaster' gives a blaster (a robot gets an arm cannon with a glowing muzzle); set e.aim = true to hold it forward while walking
      // an entity 0.9 x 2 x 0.9 (like a player box): works with UB.player3d, cameras, UB.hit3d, e.remove(), e.setColor(shirt).
      // It animates BY ITSELF from how it moves: idle / walk / run, and jump while in the air (for the UB.player3d hero) — never animate limbs yourself.
      // Front is +z at rotY = 0: for NPCs moving along a direction (dx, dz) set e.rotY = Math.atan2(dx, dz). Give each person a different outfit.
