@@ -1,7 +1,6 @@
 /*! UpBilim Engine v0.2.0 | MIT License | (c) 2026 UpBilim | https://upbilim.com
  * A tiny game engine for kids' games and AI-written games: 2D canvas, 3D on three.js (window.THREE),
- * physics on Rapier (window.RAPIER), genre kits UB.kit.*. Reference: docs/API.md
- * Comments inside are in Russian: the engine is developed for UpBilim's game studio. */
+ * physics on Rapier (window.RAPIER), genre kits UB.kit.*. Reference: docs/API.md */
 (function () {
   if (typeof document === 'undefined' || document.getElementById('ub-style')) return;
   var st = document.createElement('style'); st.id = 'ub-style';
@@ -29,7 +28,7 @@
     store: {},
   };
 
-  // ---- звук: синтез WebAudio, без файлов ----
+  // ---- sound: WebAudio synthesis, no files ----
   var ac = null;
   var tone = function (f1, f2, dur, type, vol, delay) {
     if (!ac) return;
@@ -38,7 +37,7 @@
     g.gain.setValueAtTime(vol || 0.08, t); g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
     o.connect(g); g.connect(toneDest || ac.destination); o.start(t); o.stop(t + dur + 0.02);
   };
-  // шумовой удар (бум, хлопок, свист, всплеск): общий буфер белого шума через фильтр
+  // noise hit (boom, pop, whoosh, splash): a shared white-noise buffer through a filter
   var noiseBuf = null, toneDest = null;
   var noiseHit = function (dur, f1, f2, type, vol, delay) {
     if (!ac) return;
@@ -65,8 +64,8 @@
     splash: function () { noiseHit(0.5, 2500, 500, 'lowpass', 0.25); noiseHit(0.25, 4000, 2000, 'highpass', 0.08, 0.05); },
     magic: function () { [1046, 1318, 1568, 2093].forEach(function (f, i) { tone(f, f * 1.01, 0.25, 'sine', 0.05, i * 0.06); }); },
   };
-  // звук «откуда-то»: в 3D — из точки мира ({ at: объект } или { x, y, z }), в 2D — слева/справа по { x } на экране
-  var spatial = null;   // ставит 3D-часть: (o) -> узел-вход с паннером или null
+  // a sound "from somewhere": in 3D from a world point ({ at: entity } or { x, y, z }), in 2D left/right by { x } on screen
+  var spatial = null;   // set by the 3D part: (o) -> an input node with a panner, or null
   UB.sfx = function (name, o) {
     var f = SFX[name]; if (!f) return;
     if (!o || !ac) return f();
@@ -78,7 +77,7 @@
     setTimeout(function () { try { g.disconnect(); if (dest) dest.disconnect(); } catch (e) {} }, 3000);
   };
 
-  // ---- ввод: клавиатура, мышь/тач в координатах игры, экранные кнопки на телефоне ----
+  // ---- input: keyboard, mouse/touch in game coordinates, on-screen buttons on phones ----
   var held = {}, pressedNow = {}, aliases = { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown', jump: 'Space', fire: 'Space', action: 'Space' };
   var keyName = function (k) { return aliases[k] || k; };
   var pointer = { x: 0, y: 0, down: false, pressed: false, released: false };
@@ -94,7 +93,7 @@
   window.addEventListener('keyup', function (e) { held[e.code] = false; });
   window.addEventListener('blur', function () { held = {}; });
 
-  // ---- холст: фиксированное разрешение игры, вписывается в окно ----
+  // ---- canvas: fixed game resolution, fitted into the window ----
   var canvas = document.createElement('canvas'), ctx = canvas.getContext('2d'), W = 960, H = 540, scale = 1, offX = 0, offY = 0;
   document.body.appendChild(canvas);
   var fit = function () {
@@ -111,13 +110,13 @@
   window.addEventListener('pointermove', toGame);
   window.addEventListener('pointerup', function (e) { toGame(e); if (pointer.down) pointer.released = true; pointer.down = false; });
 
-  // __UB_TOUCH — предпросмотр «как на телефоне» в редакторе: экранные кнопки и подсказки для тача на компьютере
+  // __UB_TOUCH — the editor's "as on a phone" preview: on-screen buttons and touch hints on a computer
   var touch = window.__UB_TOUCH != null ? !!window.__UB_TOUCH : 'ontouchstart' in window || navigator.maxTouchPoints > 0;
   UB.isTouch = touch;
-  // редактор уровней: «Играть уровень» — набор пропускает меню и сразу запускает этот уровень
+  // level editor: "Play this level" — the kit skips the menu and starts this level right away
   UB.testLevel = typeof window.__UB_LEVEL === 'number' ? window.__UB_LEVEL : null;
-  // Экранные кнопки (только на сенсорных экранах): названия — left, right, up, down, jump, fire, action.
-  // Стрелки — SVG-шевроны (символы-стрелки запрещены законом «без эмодзи»), кнопки действий — буквы.
+  // On-screen buttons (touch screens only): names are left, right, up, down, jump, fire, action.
+  // Arrows are SVG chevrons (arrow characters are banned by the "no emoji" rule), action buttons are letters.
   var chev = function (rot) { return '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" style="transform:rotate(' + rot + 'deg)"><path d="m15 18-6-6 6-6"/></svg>'; };
   var ICON = { left: chev(0), right: chev(180), up: chev(90), down: chev(270) }, LABEL = { jump: 'A', fire: 'B', action: 'A' };
   var padButton = function (n, code, color) {
@@ -136,7 +135,7 @@
     bar.appendChild(lr); bar.appendChild(act); document.body.appendChild(bar);
   };
 
-  // Вдвоём на одном устройстве: игрок 1 — WASD + F, игрок 2 — стрелки + Enter; на телефоне — свои кнопки у каждого края
+  // Two players on one device: player 1 — WASD + F, player 2 — arrows + Enter; on phones each has buttons at their edge
   var DUO = {
     1: { left: 'KeyA', right: 'KeyD', up: 'KeyW', down: 'KeyS', action: 'KeyF', jump: 'KeyF', fire: 'KeyF' },
     2: { left: 'ArrowLeft', right: 'ArrowRight', up: 'ArrowUp', down: 'ArrowDown', action: 'Enter', jump: 'Enter', fire: 'Enter' },
@@ -157,8 +156,8 @@
     document.body.appendChild(bar);
   };
 
-  // ---- командная игра (режим team): экран-хост держит состояние, телефоны шлют действия и рисуют присланное ----
-  // Кабинет (родитель iframe) передаёт сообщения через сервер; входящие от него — с меткой ub:2.
+  // ---- team game (team mode): the host screen keeps the state, phones send actions and draw what they receive ----
+  // The parent page (the iframe's host) relays messages through the server; messages from it are tagged ub:2.
   var net = { role: 'solo', me: null, state: null, ready: !window.__UB_NET }, bgTick = null;
   var players = [], inbox = [], outState = null, lastFlush = 0, sentAt = [];
   window.addEventListener('message', function (e) {
@@ -170,33 +169,33 @@
     else if (d.type === 'net:state' && net.role === 'player') net.state = d.state;
     else if (d.type === 'net:tick' && bgTick) bgTick();
   });
-  // командная игра: код игры запускается после того, как стала известна роль (хост / телефон) — иначе верхний уровень
-  // кода (например, UB.create с разным размером для хоста и телефона) увидел бы роль 'solo'. Нет ответа 6 с — запускаем так.
-  // Игра с физикой (на странице библиотека RAPIER): WebAssembly запускается асинхронно — код игры ждёт и её.
+  // team game: the game code runs once the role is known (host / phone) — otherwise top-level code (for example
+  // UB.create with different sizes for host and phone) would see the role 'solo'. No answer in 6 s — run anyway.
+  // A game with physics (the RAPIER library is on the page): WebAssembly starts asynchronously — the game code waits for it too.
   var gameRan = false, physWait = !!window.RAPIER;
   var runGame = function () { if (gameRan || physWait || !net.ready || typeof window.__UB_GAME !== 'function') return; gameRan = true; window.__UB_GAME(); };
   window.__UB_RUN = runGame;
-  // вне песочницы (движок как библиотека): UB.ready(() => { код игры }) — запустить, когда физика готова (и роль известна)
+  // outside the sandbox (the engine as a library): UB.ready(() => { game code }) — run once physics is ready (and the role is known)
   UB.ready = function (fn) { if (gameRan) return fn(); window.__UB_GAME = fn; runGame(); };
   if (window.__UB_NET) setTimeout(function () { net.ready = true; runGame(); }, 6000);
   if (physWait) window.RAPIER.init().then(function () { physWait = false; runGame(); }, function (e) { physWait = false; send({ type: 'ub:error', message: 'physics failed to start: ' + (e && e.message) }); });
   net.players = function () { return players.slice(); };
   net.inbox = function () { var m = inbox; inbox = []; return m; };
-  // игрок → хост: не чаще 15 раз в секунду, маленький JSON
+  // player → host: at most 15 times per second, small JSON
   net.send = function (data) {
     if (net.role !== 'player') return false;
     var now = performance.now(); sentAt = sentAt.filter(function (t) { return now - t < 1000; });
     if (sentAt.length >= 15) return false;
     sentAt.push(now); send({ type: 'ub:net', kind: 'msg', data: data }); return true;
   };
-  // хост → все телефоны: последнее состояние уходит не чаще 10 раз в секунду (в игровом цикле)
+  // host → all phones: the latest state goes out at most 10 times per second (in the game loop)
   net.broadcast = function (state) { if (net.role === 'host') outState = { v: state }; };
   var flushNet = function (now) {
     if (outState && now - lastFlush >= 100) { send({ type: 'ub:net', kind: 'state', state: outState.v }); outState = null; lastFlush = now; }
   };
   UB.net = net;
 
-  // ---- картинки игры (window.__UB_ASSETS: имя → data-URL, вписывает studioHtml) ----
+  // ---- game images (window.__UB_ASSETS: name → data URL, filled in by studioHtml) ----
   var images = {}, pending = 0;
   var ASSETS = window.__UB_ASSETS || {};
   Object.keys(ASSETS).forEach(function (name) {
@@ -206,13 +205,13 @@
   });
   UB.hasImage = function (name) { return !!ASSETS[name]; };
   UB.images = Object.keys(ASSETS);
-  // своя картинка по адресу (движок как библиотека; в песочнице «Студии» сеть закрыта — там только __UB_ASSETS). До UB.start: старт её подождёт
+  // your own image by URL (engine as a library; the Studio sandbox has no network — only __UB_ASSETS there). Call before UB.start: the start waits for it
   UB.image = function (name, src) {
     var im = new Image(); pending++; im.onload = im.onerror = function () { pending--; }; im.src = src;
     images[name] = im; ASSETS[name] = src; if (UB.images.indexOf(name) < 0) UB.images.push(name);
   };
 
-  // ---- рисование ----
+  // ---- drawing ----
   var g = {
     ctx: ctx,
     clear: function (c) { ctx.fillStyle = c || '#000'; ctx.fillRect(0, 0, W, H); },
@@ -229,13 +228,13 @@
       if (o.shadow) { ctx.shadowColor = 'rgba(0,0,0,.5)'; ctx.shadowBlur = 6; }
       ctx.fillText(String(s), x, y); ctx.shadowBlur = 0;
     },
-    // Значок-картинка из символа (эмодзи) — быстрый «спрайт» без файлов
+    // An icon from a character (emoji) — a quick "sprite" without files
     sprite: function (ch, x, y, size, o) {
       o = o || {}; ctx.save(); ctx.translate(x, y); if (o.rot) ctx.rotate(o.rot); if (o.flip) ctx.scale(-1, 1); if (o.alpha != null) ctx.globalAlpha = o.alpha;
       ctx.font = (size || 48) + 'px "Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
       ctx.fillText(ch, 0, 0); ctx.restore();
     },
-    // Картинка героя / предмета / фона, нарисованная ИИ (по имени объекта из дизайна). Не загрузилась — цветная плашка с буквой.
+    // An AI-drawn picture of a hero / item / background (by the object name from the design). Not loaded — a colored tile with a letter.
     image: function (name, x, y, w, h, o) {
       o = o || {}; var im = images[name];
       ctx.save(); ctx.translate(x, y); if (o.rot) ctx.rotate(o.rot); if (o.flip) ctx.scale(-1, 1); if (o.alpha != null) ctx.globalAlpha = o.alpha;
@@ -249,7 +248,7 @@
       ctx.restore();
     },
     gradient: function (c1, c2) { var gr = ctx.createLinearGradient(0, 0, 0, H); gr.addColorStop(0, c1); gr.addColorStop(1, c2); ctx.fillStyle = gr; ctx.fillRect(0, 0, W, H); },
-    // Кнопка в игре: рисует и возвращает true, если по ней нажали в этом кадре
+    // An in-game button: draws it and returns true if it was clicked this frame
     button: function (label, x, y, w, h, o) {
       o = o || {}; var r = { x: x, y: y, w: w, h: h }, over = UB.pointIn(pointer, r);
       g.roundRect(x, y, w, h, o.radius == null ? 14 : o.radius, over ? (o.hover || '#ffd166') : (o.color || '#ffffff'));
@@ -258,7 +257,7 @@
     },
   };
 
-  // ---- частицы и тряска экрана ----
+  // ---- particles and screen shake ----
   var parts = [], shakeT = 0, shakeA = 0;
   UB.burst = function (x, y, o) {
     o = o || {}; var n = o.count || 16;
@@ -266,8 +265,8 @@
   };
   UB.shake = function (amount, time) { shakeA = amount || 8; shakeT = time || 0.25; };
 
-  // ==== v2: готовые «кирпичи», чтобы ИИ писал содержание игры, а не сантехнику. Только добавления: старые игры работают как раньше ====
-  // Таймеры и анимации живут до смены сцены (UB.go их сбрасывает) и считаются по игровому времени — без setTimeout.
+  // ==== v2: ready-made building blocks, so the AI writes game content, not plumbing. Additions only: old games work as before ====
+  // Timers and animations live until the scene changes (UB.go resets them) and run on game time — no setTimeout.
   var timers = [], tweens = [], popups = [], camOn = null;
   UB.after = function (sec, fn) { var t = { at: UB.time + (sec || 0), fn: fn }; timers.push(t); return { cancel: function () { t.dead = true; } }; };
   UB.every = function (sec, fn) { var e = Math.max(0.05, sec || 1), t = { at: UB.time + e, fn: fn, every: e }; timers.push(t); return { cancel: function () { t.dead = true; } }; };
@@ -289,7 +288,7 @@
   UB.wave = function (speed, amount, phase) { return Math.sin(UB.time * (speed || 4) + (phase || 0)) * (amount == null ? 1 : amount); };
   UB.popup = function (text, x, y, o) { o = o || {}; if (popups.length < 60) popups.push({ s: String(text), x: x, y: y, t: 0, life: o.life || 0.9, c: o.color || '#ffd166', size: o.size || 28, world: !!camOn }); };
 
-  // ---- камера 2D: уровни больше экрана. Рисуй мир внутри g.world(fn), интерфейс — снаружи ----
+  // ---- 2D camera: levels bigger than the screen. Draw the world inside g.world(fn), the HUD outside ----
   UB.camera2d = function (o) {
     o = o || {};
     var c = { x: 0, y: 0, zoom: o.zoom || 1, lerp: o.lerp == null ? 8 : o.lerp, bounds: o.bounds || null, target: o.follow || null, offsetY: o.offsetY || 0 };
@@ -298,7 +297,7 @@
       var x = t.x + (t.w || 0) / 2 - vw / 2, y = t.y + (t.h || 0) / 2 - vh / 2 + c.offsetY;
       if (c.bounds) {
         var bx = c.bounds.x || 0, by = c.bounds.y || 0;
-        // уровень уже экрана — по центру; ниже экрана — прижат к низу (земля внизу, небо сверху)
+        // a level narrower than the screen — centered; shorter than the screen — pinned to the bottom (ground below, sky above)
         x = c.bounds.w < vw ? bx + (c.bounds.w - vw) / 2 : clamp(x, bx, bx + c.bounds.w - vw);
         y = c.bounds.h < vh ? by + c.bounds.h - vh : clamp(y, by, by + c.bounds.h - vh);
       }
@@ -315,7 +314,7 @@
   };
   var camApply = function () { ctx.scale(camOn.zoom, camOn.zoom); ctx.translate(-camOn.x, -camOn.y); };
 
-  // ---- уровень из строк: '#' — стена/платформа, остальные символы — что угодно (монеты, враги, старт) ----
+  // ---- a level from strings: '#' — wall/platform, any other character is up to you (coins, enemies, start) ----
   UB.level = function (rows, o) {
     o = o || {}; var size = o.tile || 48, solidCh = o.solid || '#', oneWayCh = o.oneWay || '=';
     var lvl = { tile: size, rows: rows, cols: 0, w: 0, h: rows.length * size, solids: [], cells: [] };
@@ -337,7 +336,7 @@
     return lvl;
   };
 
-  // ---- физика прямоугольников: b = { x, y, w, h, vx, vy } (x, y — левый верхний угол), solids — массив прямоугольников ----
+  // ---- rectangle physics: b = { x, y, w, h, vx, vy } (x, y — top-left corner), solids — an array of rectangles ----
   UB.move = function (b, solids, dt, o) {
     o = o || {}; solids = solids || [];
     var res = { ground: false, ceil: false, left: false, right: false };
@@ -355,7 +354,7 @@
     b.onGround = res.ground;
     return res;
   };
-  // Готовое управление платформера: разгон, «койот»-прыжок, буфер прыжка, прыжок выше, если держать. input — UB, UB.p1 или UB.p2
+  // Ready platformer controls: acceleration, coyote time, jump buffer, higher jump while held. input — UB, UB.p1 or UB.p2
   UB.platformer = function (b, solids, dt, o) {
     o = o || {}; var inp = o.input || UB, speed = o.speed || 320, grav = o.gravity || 1800;
     var dir = (inp.key('right') ? 1 : 0) - (inp.key('left') ? 1 : 0);
@@ -367,7 +366,7 @@
     if (b.vy < 0 && !inp.key('jump') && !inp.key('up')) b.vy += grav * dt;
     return UB.move(b, solids, dt, { gravity: grav });
   };
-  // Вид сверху: 8 направлений, стены останавливают
+  // Top-down: 8 directions, walls stop you
   UB.topdown = function (b, solids, dt, o) {
     o = o || {}; var inp = o.input || UB, speed = o.speed || 260;
     var dx = (inp.key('right') ? 1 : 0) - (inp.key('left') ? 1 : 0), dy = (inp.key('down') ? 1 : 0) - (inp.key('up') ? 1 : 0), l = Math.hypot(dx, dy) || 1;
@@ -375,10 +374,10 @@
     return UB.move(b, solids, dt);
   };
 
-  // ---- поведение врагов ----
+  // ---- enemy behaviour ----
   var center = function (e) { return { x: e.x + (e.w || 0) / 2, y: e.y + (e.h || 0) / 2 }; };
   UB.ai = {
-    // ходит туда-сюда между min и max (или до стены / края платформы, если дан level)
+    // walks back and forth between min and max (or to a wall / platform edge, if level is given)
     patrol: function (e, dt, o) {
       o = o || {}; e.dir = e.dir || 1; e.x += e.dir * (o.speed || 90) * dt;
       if (o.level) { var ax = e.dir > 0 ? e.x + e.w + 1 : e.x - 1; if (o.level.solidAt(ax, e.y + e.h / 2) || (o.edges !== false && !o.level.solidAt(ax, e.y + e.h + 2))) e.dir = -e.dir; }
@@ -390,7 +389,7 @@
     flee: function (e, target, dt, speed) { var a = center(e), b = center(target), d = Math.hypot(b.x - a.x, b.y - a.y) || 1; e.x -= (b.x - a.x) / d * (speed || 90) * dt; e.y -= (b.y - a.y) / d * (speed || 90) * dt; },
     orbit: function (e, cx, cy, r, speed, phase) { var a = UB.time * (speed || 1.5) + (phase || 0); e.x = cx + Math.cos(a) * r - (e.w || 0) / 2; e.y = cy + Math.sin(a) * r - (e.h || 0) / 2; },
   };
-  // Путь по клеткам уровня (поиск в ширину), от точки к точке; [] — пути нет. Для лабиринтов и умных врагов
+  // A path over level cells (breadth-first search), point to point; [] — no path. For mazes and smart enemies
   UB.path = function (lvl, from, to) {
     var cs = lvl.tile, cols = lvl.cols, rows = lvl.rows.length, fc = Math.floor(from.x / cs), fr = Math.floor(from.y / cs), tc = Math.floor(to.x / cs), tr = Math.floor(to.y / cs);
     if (tc < 0 || tr < 0 || tc >= cols || tr >= rows) return [];
@@ -405,7 +404,7 @@
     return out;
   };
 
-  // ---- интерфейс: одинаково аккуратный во всех играх ----
+  // ---- HUD: equally neat in every game ----
   var heart = function (x, y, s, c) { ctx.fillStyle = c; ctx.beginPath(); ctx.moveTo(x, y + s * 0.3); ctx.bezierCurveTo(x, y, x - s / 2, y, x - s / 2, y + s * 0.3); ctx.bezierCurveTo(x - s / 2, y + s * 0.6, x, y + s * 0.8, x, y + s); ctx.bezierCurveTo(x, y + s * 0.8, x + s / 2, y + s * 0.6, x + s / 2, y + s * 0.3); ctx.bezierCurveTo(x + s / 2, y, x, y, x, y + s * 0.3); ctx.fill(); };
   UB.hud = {
     panel: function (x, y, w, h, o) { o = o || {}; g.roundRect(x, y, w, h, o.radius == null ? 14 : o.radius, o.color || 'rgba(10,12,30,.6)'); },
@@ -420,7 +419,7 @@
     timer: function (sec, x, y, o) { o = o || {}; sec = Math.max(0, Math.ceil(sec)); g.text(Math.floor(sec / 60) + ':' + ('0' + (sec % 60)).slice(-2), x, y, { align: o.align || 'center', size: o.size || 30, color: sec <= (o.warn == null ? 10 : o.warn) ? '#ef476f' : o.color || '#fff', shadow: true }); },
     banner: function (text, o) { o = o || {}; var h = o.size ? o.size * 2.4 : 96, y = (o.y == null ? H / 2 : o.y) - h / 2; g.rect(0, y, W, h, o.back || 'rgba(0,0,0,.55)'); g.text(text, W / 2, y + h / 2, { align: 'center', baseline: 'middle', size: o.size || 44, color: o.color || '#fff', shadow: true }); },
   };
-  // Текст с переносом по словам в ширину maxW; возвращает высоту
+  // Word-wrapped text within width maxW; returns the height
   g.textBox = function (s, x, y, maxW, o) {
     o = o || {}; var size = o.size || 24, lh = size * (o.lineHeight || 1.25);
     ctx.font = (o.bold === false ? '' : '700 ') + size + 'px ' + (o.font || 'system-ui, sans-serif');
@@ -430,7 +429,7 @@
     lines.forEach(function (l, i) { g.text(l, x, y + i * lh, { size: size, color: o.color, align: o.align || 'left', bold: o.bold, shadow: o.shadow }); });
     return lines.length * lh;
   };
-  // Ровно отрисованное окно с полупрозрачной подложкой — для пауз, подсказок, диалогов
+  // A neatly drawn window over a dimmed backdrop — for pauses, hints, dialogs
   g.dialog = function (title, body, o) {
     o = o || {}; var w = Math.min(W - 60, o.w || 640), x = (W - w) / 2, h = o.h || 220, y = (H - h) / 2;
     g.rect(0, 0, W, H, 'rgba(0,0,0,.45)'); g.roundRect(x, y, w, h, 22, o.color || '#1d2140'); g.strokeRect(x + 2, y + 2, w - 4, h - 4, 'rgba(255,255,255,.12)', 2);
@@ -439,7 +438,7 @@
     return { x: x, y: y, w: w, h: h };
   };
 
-  // ---- учебный вопрос: готовое окно с ответами, таймером, подсветкой и звуком. Вызывай q.draw(g) каждый кадр, пока q.open ----
+  // ---- learning question: a ready window with answers, timer, highlighting and sound. Call q.draw(g) every frame while q.open ----
   UB.quiz = function (o) {
     var Q = { q: o.q, options: o.options || [], correct: o.correct, time: o.time || 0, t0: UB.time, picked: -1, at: 0, open: true, ok: false };
     var choose = function (i) { if (Q.picked >= 0) return; Q.picked = i; Q.ok = i === Q.correct; Q.at = UB.time; UB.sfx(Q.ok ? 'correct' : 'wrong'); if (Q.ok) UB.burst(W / 2, H / 2 - 60, { count: 24 }); else UB.shake(6, 0.2); };
@@ -466,7 +465,7 @@
     return Q;
   };
 
-  // ---- музыка: процедурная петля без файлов (WebAudio). UB.music('happy'|'calm'|'tense'|'space'|'boss'|'retro'), UB.music(null) — тишина ----
+  // ---- music: a procedural loop without files (WebAudio). UB.music('happy'|'calm'|'tense'|'space'|'boss'|'retro'), UB.music(null) — silence ----
   var MUSIC = {
     happy: { bpm: 124, root: 60, scale: [0, 2, 4, 7, 9], chords: [0, 5, 7, 5], lead: 'square', seed: 3 },
     calm: { bpm: 92, root: 62, scale: [0, 2, 4, 7, 9], chords: [0, 9, 5, 7], lead: 'triangle', seed: 7 },
@@ -496,7 +495,7 @@
     }
   };
 
-  // шаг всего v2 за кадр (после update сцены)
+  // one v2 step per frame (after the scene update)
   var stepV2 = function (dt) {
     var list = timers;
     for (var i = 0; i < list.length && timers === list; i++) { var t = list[i]; if (t.dead || UB.time < t.at) continue; if (t.every) t.at += t.every; else t.dead = true; t.fn(); }
@@ -518,13 +517,13 @@
     ctx.globalAlpha = 1;
   };
 
-  // ---- сцены и цикл ----
+  // ---- scenes and the loop ----
   var scenes = {}, cur = null, curName = '', state = {};
   UB.width = W; UB.height = H; UB.time = 0;
   var created = false;
   UB.create = function (o) {
     o = o || {}; created = true; W = o.width || 960; H = o.height || 540; UB.width = W; UB.height = H; UB.bg = o.background || '#10142a';
-    send({ type: 'ub:screen', w: W, h: H });   // предпросмотр командной игры разворачивает «телефон» под ориентацию экрана игры
+    send({ type: 'ub:screen', w: W, h: H });   // the team-game preview turns the "phone" to match the game's screen orientation
     document.body.style.background = o.letterbox || '#05060c'; fit(); return UB;
   };
   UB.scene = function (name, def) { scenes[name] = def; return UB; };
@@ -539,9 +538,9 @@
   UB.score = function (n) { if (n !== lastScore) { lastScore = n; send({ type: 'ub:score', score: n }); } };
   UB.finish = function (o) { send({ type: 'ub:finish', score: o && o.score != null ? o.score : lastScore, won: !!(o && o.won) }); };
   UB.start = function (name, data) {
-    // игра не вызвала UB.create (так пишут игры на наборах) — экран по умолчанию, иначе холст не подогнан под окно
+    // the game never called UB.create (kit games don't) — default screen, otherwise the canvas is not fitted to the window
     if (!created) UB.create({});
-    // ждём картинки (не дольше 4 секунд), потом запускаем
+    // wait for images (at most 4 seconds), then start
     if (pending > 0 || !net.ready) {
       var t0 = performance.now();
       var wait = function () { if ((pending > 0 || !net.ready) && performance.now() - t0 < 6000) { ctx.fillStyle = '#05060c'; ctx.fillRect(0, 0, W, H); requestAnimationFrame(wait); } else UB.start_(name, data); };
@@ -552,8 +551,8 @@
   UB.start_ = function (name, data) {
     UB.go(name, data); send({ type: 'ub:ready' });
     var last = performance.now();
-    // скрытая вкладка: requestAnimationFrame стоит. Общий экран командной игры будит страница комнаты (тик раз в 50 мс из Web Worker,
-    // его браузер почти не тормозит) — считаем игру кусками по 0.05 с, не рисуем; вернулись на вкладку — обычный цикл
+    // hidden tab: requestAnimationFrame stops. The team game's shared screen is woken by the room page (a 50 ms tick from a Web Worker,
+    // which the browser barely throttles) — run the game in 0.05 s steps without drawing; back on the tab — the normal loop
     var rafOn = false;
     var schedule = function () { if (!rafOn) { rafOn = true; requestAnimationFrame(function (t) { rafOn = false; frame(t); }); } };
     var frame = function (now) {
@@ -571,9 +570,9 @@
         if (UB.is3d && UB.render3d) UB.render3d(total);
         ctx.save();
         if (shakeT > 0) { shakeT -= total; ctx.translate(rand(-shakeA, shakeA), rand(-shakeA, shakeA)); }
-        if (UB.is3d) ctx.clearRect(-50, -50, W + 100, H + 100); else g.clear(UB.bg);   // 3D: мир рисует WebGL под прозрачным 2D-слоем
+        if (UB.is3d) ctx.clearRect(-50, -50, W + 100, H + 100); else g.clear(UB.bg);   // 3D: WebGL draws the world under the transparent 2D layer
         if (cur && cur.draw) cur.draw(g, state);
-        // частицы и всплывающий текст: созданные при включённой камере 2D — в координатах мира
+        // particles and popups created while a 2D camera exists are in world coordinates
         var drawParts = function (world) { parts.forEach(function (p) { if (!!p.world !== world) return; ctx.globalAlpha = Math.max(0, 1 - p.t / p.life); g.circle(p.x, p.y, p.r, p.c); }); ctx.globalAlpha = 1; };
         if (camOn) { ctx.save(); camApply(); drawParts(true); drawPopups(true); ctx.restore(); }
         drawParts(false); drawPopups(false);
@@ -587,7 +586,7 @@
     schedule();
   };
 
-  // ==== 3D (если загружен THREE): мир на WebGL под 2D-слоем; сцены, ввод, звуки и 2D-интерфейс — общие ====
+  // ==== 3D (if THREE is loaded): the world on WebGL under the 2D layer; scenes, input, sound and the 2D HUD are shared ====
   (function () {
     var T = window.THREE;
     var skyDome = null, sun = null, quality = null;
@@ -607,7 +606,7 @@
       renderer = new T.WebGLRenderer({ canvas: gl, antialias: (window.devicePixelRatio || 1) < 2, powerPreference: 'high-performance' });
       renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
       scene = new T.Scene(); scene.background = color(o.sky || '#8fd3ff');
-      // небо — градиент: у горизонта светлее, вверху насыщеннее; туман того же цвета, что горизонт, — края мира тают в небе
+      // gradient sky: lighter at the horizon, deeper above; fog has the horizon color, so the world's edges fade into the sky
       var skyC = color(o.sky || '#8fd3ff'), horizon = skyC.clone().lerp(new T.Color(0xffffff), 0.35), zenith = skyC.clone().multiplyScalar(0.78);
       if (o.skyGradient !== false) {
         skyDome = new T.Mesh(new T.SphereGeometry(450, 24, 12), new T.ShaderMaterial({
@@ -620,11 +619,11 @@
       }
       if (o.fog !== false) scene.fog = new T.Fog(o.skyGradient !== false ? horizon : skyC, o.fogNear || 40, o.fogFar || 140);
       camera = new T.PerspectiveCamera(o.fov || 60, W / H, 0.1, 600);
-      // за туманом всё равно ничего не видно (цвет тумана) — дальше не рисуем вовсе; небо-сфера — чуть ближе дальней границы
+      // nothing is visible beyond the fog anyway (fog color) — don't draw past it at all; the sky dome sits just inside the far plane
       if (o.fog !== false) { camera.far = Math.max(60, (o.fogFar || 140) * 1.15); camera.updateProjectionMatrix(); if (skyDome) skyDome.scale.setScalar(camera.far * 0.9 / 450); }
       scene.add(new T.HemisphereLight(0xffffff, 0x445566, 1.1));
       sun = new T.DirectionalLight(0xffffff, 1.2); sun.position.set(30, 60, 20); scene.add(sun); scene.add(sun.target);
-      // мягкие тени от солнца: коробка теней 70 м ездит за камерой (см. render3d); качество 'auto' — слабое устройство их выключит
+      // soft sun shadows: a 70 m shadow box follows the camera (see render3d); quality 'auto' — a slow device turns them off
       quality = { mode: o.quality || 'auto', shadows: o.shadows !== false && o.quality !== 'low', ratio: Math.min(window.devicePixelRatio || 1, o.quality === 'low' ? 1 : 1.5), frames: 0, slow: 0, t: 0 };
       renderer.setPixelRatio(quality.ratio);
       renderer.shadowMap.enabled = quality.shadows; renderer.shadowMap.type = T.PCFShadowMap;
@@ -640,7 +639,7 @@
       fit();
       return UB;
     };
-    // Объект мира. Хитбокс — коробка с центром (x, y, z) и размерами w×h×d (шар и цилиндр — по 2r).
+    // A world object. Its hitbox is a box centered at (x, y, z) with size w×h×d (spheres and cylinders: 2r).
     UB.spawn = function (o) {
       if (!scene) throw new Error('call UB.create3d first');
       if (ents.length >= 400) throw new Error('too many 3D objects (max 400)');
@@ -648,7 +647,7 @@
       var shape = o.shape || 'box', r = o.r || 0.5, w = o.w || (shape === 'box' ? 1 : r * 2), h = o.h || (shape === 'box' || shape === 'image' ? 1 : shape === 'sphere' ? r * 2 : o.h || 1), d = o.d || (shape === 'box' ? 1 : r * 2);
       var mesh, mat;
       if (shape === 'label') {
-        // надпись в мире (всегда лицом к камере): ответы на воротах, имена, подсказки
+        // a label in the world (always faces the camera): answers on gates, names, hints
         var lc = document.createElement('canvas'), lctx = lc.getContext('2d');
         mat = new T.SpriteMaterial({ transparent: true, depthWrite: false });
         mesh = new T.Sprite(mat);
@@ -667,7 +666,7 @@
         mesh = character(o); var cs = o.scale || 1; w = 0.9 * cs; h = 2 * cs; d = 0.9 * cs;
         mat = { dispose: function () {}, color: null };
       } else if (shape === 'model') {
-        mesh = new T.Group(); mat = { dispose: function () {}, color: null };   // сама модель придёт, когда загрузится (UB.model3d)
+        mesh = new T.Group(); mat = { dispose: function () {}, color: null };   // the model itself arrives once it loads (UB.model3d)
       } else if (shape === 'prefab') {
         mesh = prefab(o.prefab || o.name || 'rock', o);
         var bb = PREFAB_BOX[o.prefab || o.name] || [1, 1, 1], sc = o.scale || 1;
@@ -681,7 +680,7 @@
       } else {
         var geo = shape === 'sphere' ? new T.SphereGeometry(r, 20, 14) : shape === 'cylinder' ? new T.CylinderGeometry(r, r, h, 20) : shape === 'cone' ? new T.ConeGeometry(r, h, 20) : new T.BoxGeometry(w, h, d);
         var bdef = o.block != null && shape === 'box' ? BLOCK_BY[String(o.block)] : null;
-        if (bdef && bdef.id && getAtlas()) {   // коробка из блока мира: текстура плитки повторяется по размеру
+        if (bdef && bdef.id && getAtlas()) {   // a box made of a world block: the tile texture repeats along its size
           var bm = blockBoxMats(bdef, w, h, d); mesh = new T.Mesh(geo, bm);
           mat = { color: null, map: null, dispose: function () { bm.forEach(function (m) { m.dispose(); }); } };
         } else {
@@ -705,7 +704,7 @@
           for (var pi = players.length - 1; pi >= 0; pi--) if (players[pi].e === e) { unplayer(players[pi]); players.splice(pi, 1); }
           var ai = animated.indexOf(e); if (ai >= 0) animated.splice(ai, 1); if (e._mixer) e._mixer.stopAllAction();
           scene.remove(mesh);
-          if (shape === 'model') { /* геометрия общая у всех копий модели — не освобождаем */ }
+          if (shape === 'model') { /* geometry is shared by all copies of the model — don't dispose */ }
           else if (shape === 'character') mesh.traverse(function (m) { if (m.material && m.material.userData.own) m.material.dispose(); });
           else if (shape === 'prefab') mesh.traverse(function (m) { if (m.geometry) m.geometry.dispose(); if (m.material) m.material.dispose(); });
           else { if (mesh.geometry) mesh.geometry.dispose(); if (mat.map) mat.map.dispose(); mat.dispose(); mesh.children.forEach(function (c) { if (c.material) c.material.dispose(); }); }
@@ -714,7 +713,7 @@
       if (shape === 'prefab') e._kind = o.prefab || o.name || 'rock';
       ents.push(e); return e;
     };
-    // Готовые модели из простых фигур: центр группы — центр хитбокса (как у остальных объектов)
+    // Ready-made models from simple shapes: the group's center is the hitbox center (like other objects)
     var PREFAB_BOX = { tree: [1.6, 3.4, 1.6], pine: [1.6, 4, 1.6], bush: [1.4, 0.9, 1.4], rock: [1.4, 0.9, 1.2], coin: [0.8, 0.8, 0.2], crystal: [0.7, 1.2, 0.7], star: [1, 1, 0.3],
       flag: [0.8, 3, 0.2], house: [4, 4, 4], lamp: [0.4, 3.2, 0.4], gate: [4, 4, 0.6], chest: [1.1, 0.9, 0.8], cloud: [3, 1.2, 1.6], fence: [2, 1, 0.15], car: [1.8, 1.4, 3.4], heart: [0.8, 0.8, 0.3], key: [0.4, 0.9, 0.15], portal: [2.4, 3, 0.4], tower: [2.4, 6, 2.4] };
     var prefab = function (kind, o) {
@@ -746,13 +745,13 @@
       return grp;
     };
     UB.prefab = function (kind, o) { o = Object.assign({}, o || {}); o.shape = 'prefab'; o.prefab = kind; return UB.spawn(o); };
-    // ==== Персонажи из кубиков (как в Roblox) и модели glTF со скелетной анимацией ====
-    // Анимации: 'idle' | 'walk' | 'run' | 'jump' | 'wave' | 'dance' | 'cheer' | 'hit'. Пока не задана своя (e.play), персонаж сам
-    // выбирает стоит / идёт / бежит / прыгает по тому, как двигается (у героя UB.player3d — ещё и по «на земле»).
+    // ==== Blocky characters (Roblox-like) and glTF models with skeletal animation ====
+    // Animations: 'idle' | 'walk' | 'run' | 'jump' | 'wave' | 'dance' | 'cheer' | 'hit'. Unless one is set (e.play), the character
+    // picks stand / walk / run / jump from how it moves (for the UB.player3d hero also from "on the ground").
     var animated = [], charGeo = {}, charMats = {};
     var character = function (o) {
       var robot = o.style === 'robot';
-      // геометрия и неперекрашиваемые материалы — общие для всех персонажей (их могут быть десятки), одежда — своя (setColor, вспышка попадания)
+      // geometry and non-recolorable materials are shared by all characters (there may be dozens), clothes are per character (setColor, hit flash)
       var lam = function (c, glow, own) {
         var key = c + '|' + (glow || ''); if (!own && charMats[key]) return charMats[key];
         var m = new T.MeshLambertMaterial({ color: color(c), emissive: glow ? color(glow) : 0x000000 }); if (own) m.userData.own = true; else charMats[key] = m; return m;
@@ -762,16 +761,16 @@
       var skin = o.skin || (robot ? '#b8c4d6' : '#f2c79c'), shirt = o.shirt || (robot ? '#7d8da8' : '#4cc9f0'), pants = o.pants || (robot ? '#5c6b82' : '#3a0ca3');
       var root = new T.Group(), body = new T.Group(); root.add(body);
       var joint = function (x, y) { var g = new T.Group(); g.position.set(x, y, 0); body.add(g); return g; };
-      // ноги: шарнир в бедре (y = −0.2 от центра; низ — −1)
+      // legs: hinge at the hip (y = −0.2 from the center; bottom is −1)
       var hipL = joint(0.16, -0.2), hipR = joint(-0.16, -0.2);
       [hipL, hipR].forEach(function (hp) { hp.add(at(box(0.3, 0.62, 0.32, pants), 0, -0.31, 0)); hp.add(at(box(0.32, 0.18, 0.38, o.shoes || '#2b2d42'), 0, -0.71, 0.03)); });
       var torso = at(box(0.68, 0.72, 0.38, shirt, null, true), 0, 0.15, 0); torso.userData.tint = true; body.add(torso);
-      // руки: шарнир в плече
+      // arms: hinge at the shoulder
       var shL = joint(0.47, 0.44), shR = joint(-0.47, 0.44);
       [shL, shR].forEach(function (sh) { var a = at(box(0.24, 0.5, 0.26, shirt, null, true), 0, -0.22, 0); a.userData.tint = true; sh.add(a); sh.add(at(box(0.22, 0.2, 0.24, skin), 0, -0.56, 0)); });
-      // в руке: бластер вдоль руки (при e.aim руки вытянуты вперёд — бластер смотрит туда же, куда персонаж)
+      // in hand: a blaster along the arm (with e.aim the arms point forward — the blaster faces where the character faces)
       if (o.item === 'blaster') { shR.add(at(box(0.12, 0.5, 0.17, '#2b2d42'), 0, -0.78, 0.04)); shR.add(at(box(0.08, 0.08, 0.08, o.itemColor || '#7df9ff', o.itemColor || '#7df9ff'), 0, -1.05, 0.04)); }
-      // голова с лицом (+z — перед: так смотрит герой при rotY = 0)
+      // head with a face (+z is the front: the hero looks that way at rotY = 0)
       var neck = joint(0, 0.52);
       neck.add(at(box(0.52, 0.52, 0.5, skin), 0, 0.27, 0));
       var eye = o.eyes || (robot ? '#7df9ff' : '#1b1b2f');
@@ -790,7 +789,7 @@
       return root;
     };
     var POSES = { wave: 1.6, dance: 3, cheer: 1.6, hit: 0.5, jump: 0.8 };
-    // поза персонажа из кубиков (углы в радианах): ноги/руки — вокруг x (минус — вперёд), руки в стороны — вокруг z
+    // a blocky character's pose (angles in radians): legs/arms around x (negative is forward), arms sideways around z
     var pose = function (name, t) {
       var p = { lx: 0, rx: 0, alx: 0, arx: 0, alz: 0.06, arz: -0.06, lean: 0, bob: 0, twist: 0, head: 0 }, s;
       if (name === 'walk') { s = Math.sin(t * 9); p.lx = 0.6 * s; p.rx = -0.6 * s; p.alx = -0.5 * s; p.arx = 0.5 * s; p.bob = Math.abs(s) * 0.05; }
@@ -803,12 +802,12 @@
       else { s = Math.sin(t * 2); p.alx = 0.05 * s; p.arx = -0.05 * s; p.bob = 0.02 * s; }
       return p;
     };
-    // что играть сейчас: своё (e.play) или по движению
+    // what to play now: a set one (e.play) or by movement
     var autoAnim = function (e, dt) {
       if (e._lx == null) { e._lx = e.x; e._ly = e.y; e._lz = e.z; }
       var v = dt > 0 ? Math.hypot(e.x - e._lx, e.z - e._lz) / dt : 0, vy = dt > 0 ? (e.y - e._ly) / dt : 0;
       e._lx = e.x; e._ly = e.y; e._lz = e.z;
-      e._v = (e._v || 0) + (v - (e._v || 0)) * Math.min(1, dt * 10);   // сглаживаем: рывки кадров не дёргают анимацию
+      e._v = (e._v || 0) + (v - (e._v || 0)) * Math.min(1, dt * 10);   // smoothed: frame hiccups don't jerk the animation
       if (e._once) { e._onceT -= dt; if (e._onceT > 0) return e._once; e._once = null; }
       if (e._loop) return e._loop;
       var air = e._pc ? !e._pc.onGround : Math.abs(vy) > 2.5;
@@ -831,14 +830,14 @@
         var name = autoAnim(e, dt).toLowerCase(), rig = e.mesh.userData.rig; if (!rig) return;
         e._t += dt * (name === 'walk' || name === 'run' ? Math.max(0.6, Math.min(1.6, e._v / (name === 'run' ? 7 : 3) / (e.h / 2))) : 1);
         var tg = pose(name, e._t), c = e._cur, k = 1 - Math.exp(-dt * 14);
-        if (e.aim && !e._once) { tg.alx = -1.35; tg.arx = -1.5; tg.alz = -0.35; tg.arz = 0.1; }   // руки держат бластер перед собой (ноги — как обычно)
+        if (e.aim && !e._once) { tg.alx = -1.35; tg.arx = -1.5; tg.alz = -0.35; tg.arz = 0.1; }   // arms hold the blaster in front (legs as usual)
         for (var key in tg) c[key] += (tg[key] - c[key]) * k;
         rig.hipL.rotation.x = c.lx; rig.hipR.rotation.x = c.rx; rig.shL.rotation.x = c.alx; rig.shR.rotation.x = c.arx; rig.shL.rotation.z = c.alz; rig.shR.rotation.z = c.arz;
         rig.body.rotation.x = c.lean; rig.body.rotation.y = c.twist; rig.body.position.y = c.bob; rig.neck.rotation.x = -c.head;
       };
       animatable(e); return e;
     };
-    // ---- модели glTF: в «Студии» — встроенные (скрипт с нашего адреса кладёт их в window.__UB_MODELS), в библиотеке — UB.loadModel ----
+    // ---- glTF models: in Studio built-in ones (a script from our origin puts them into window.__UB_MODELS), in the library — UB.loadModel ----
     var gltfs = {};
     var Loader = function () { return T.GLTFLoader || window.GLTFLoader; };
     var cloneSkinned = function (o) { var SU = T.SkeletonUtils || window.SkeletonUtils; return SU && SU.clone ? SU.clone(o) : o.clone(true); };
@@ -861,7 +860,7 @@
         } catch (err) { modelFailed(rec, name, err); }
       });
     })();
-    // габариты с учётом костей: у модели со скелетом геометрия хранится в «позе привязки» (часто в сантиметрах)
+    // bounds including bones: a skinned model keeps its geometry in the bind pose (often in centimeters)
     var boundsOf = function (obj) { obj.updateMatrixWorld(true); obj.traverse(function (m) { if (m.isSkinnedMesh) m.boundingBox = null; }); return new T.Box3().setFromObject(obj); };
     var clipLen = function (e, name) { var a = e._actions && findClip(e, name); return a ? a.getClip().duration : 0; };
     var findClip = function (e, name) {
@@ -872,14 +871,14 @@
       var k = names.filter(function (x) { return re.test(x); })[0];
       return k ? e._actions[k] : null;
     };
-    // UB.model3d('robot', { x, z, h: 2, rotY, solid, turn }) — объект мира: хитбокс по размерам модели (рост h, по умолчанию 2 м)
+    // UB.model3d('robot', { x, z, h: 2, rotY, solid, turn }) — a world object: hitbox from the model's size (height h, 2 m by default)
     UB.model3d = function (name, o) {
       o = Object.assign({}, o || {});
       var want = o.h || 2;
       var e = UB.spawn({ shape: 'model', x: o.x, z: o.z, y: o.y, w: o.w || want * 0.5, h: want, d: o.d || want * 0.5, rotY: o.rotY, solid: o.solid, data: o.data });
       e.modelName = name; e.anims = []; e._t = 0;
       var attach = function (g) {
-        if (ents.indexOf(e) < 0) return;   // объект уже убрали
+        if (ents.indexOf(e) < 0) return;   // the object has already been removed
         var root;
         if (!g) { root = new T.Mesh(new T.CapsuleGeometry(want * 0.22, want * 0.5, 4, 10), new T.MeshLambertMaterial({ color: color(o.color || '#b388ff') })); root.position.y = 0; root.castShadow = true; e.mesh.add(root); return; }
         root = cloneSkinned(g.scene);
@@ -900,7 +899,7 @@
       var rec = gltfs[name];
       if (rec && rec.gltf) attach(rec.gltf);
       else if (rec && !rec.failed) rec.waiting.push(attach);
-      else attach(null);   // такой модели нет — простая фигура вместо неё, игра не ломается
+      else attach(null);   // no such model — a simple shape instead, the game doesn't break
       e._animate = function (dt) {
         var want2 = autoAnim(e, dt); if (!e._mixer) return;
         var act = findClip(e, want2) || findClip(e, 'idle');
@@ -915,25 +914,25 @@
       animatable(e); return e;
     };
     UB.label3d = function (text, x, y, z, o) { o = Object.assign({}, o || {}); o.shape = 'label'; o.text = text; o.x = x; o.y = y; o.z = z; return UB.spawn(o); };
-    // точка мира → координаты 2D-слоя (для надписей и полосок над объектами в draw); visible = false — за камерой
+    // world point → 2D layer coordinates (for labels and bars over objects in draw); visible = false — behind the camera
     UB.toScreen3d = function (x, y, z) {
       if (!camera) return { x: 0, y: 0, visible: false };
       var v = new T.Vector3(x, y, z); v.project(camera);
       return { x: (v.x + 1) / 2 * W, y: (1 - v.y) / 2 * H, visible: v.z < 1 && v.z > -1 };
     };
-    // Воксели — мир из кубов, как в Minecraft: тысячи кубов одной отрисовкой (InstancedMesh), дёшево даже на слабом ноутбуке.
-    // list: [{ x, y, z, c }] — центр куба и цвет; o.size — ребро (м). Возвращает { remove() }; UB.clear3d тоже убирает.
+    // Voxels — a world of cubes like Minecraft: thousands of cubes are cheap even on a weak laptop.
+    // list: [{ x, y, z, c } | { x, y, z, b: 'grass' }] — cube center and color or block; o.size — edge (m). Returns { remove() }; UB.clear3d removes it too.
     var vox = [];
-    // ---- блоки «Мира школы» (общий пакет @upbilim/blocks): тот же каталог и те же пиксельные текстуры, что в мире ----
+    // ---- school world blocks (shared package @upbilim/blocks): the same catalog and pixel textures as in the UpBilim world ----
     var BLOCK_DEFS = [{"id":0,"key":"air","top":"#000","side":"#000","solid":false,"clear":true,"glow":false,"cross":false},{"id":1,"key":"grass","top":"#6FBF4B","side":"#8B6A4E","solid":true,"clear":false,"glow":false,"cross":false},{"id":2,"key":"dirt","top":"#8B6A4E","side":"#8B6A4E","solid":true,"clear":false,"glow":false,"cross":false},{"id":3,"key":"stone","top":"#9AA0A6","side":"#8C9298","solid":true,"clear":false,"glow":false,"cross":false},{"id":4,"key":"sand","top":"#E9D9A6","side":"#E3D29B","solid":true,"clear":false,"glow":false,"cross":false},{"id":5,"key":"planks","top":"#C49A6C","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false},{"id":6,"key":"log","top":"#C9A77A","side":"#7A5536","solid":true,"clear":false,"glow":false,"cross":false},{"id":7,"key":"leaves","top":"#3F9E4F","side":"#3A9148","solid":true,"clear":false,"glow":false,"cross":false},{"id":8,"key":"white","top":"#F4F1EC","side":"#EAE6DF","solid":true,"clear":false,"glow":false,"cross":false},{"id":9,"key":"path","top":"#B8AE9C","side":"#A89E8B","solid":true,"clear":false,"glow":false,"cross":false},{"id":10,"key":"brick","top":"#B5533C","side":"#A94B35","solid":true,"clear":false,"glow":false,"cross":false},{"id":11,"key":"glass","top":"#CFE8FB","side":"#CFE8FB","solid":true,"clear":true,"glow":false,"cross":false},{"id":12,"key":"purple","top":"#AF58EA","side":"#9E4BD6","solid":true,"clear":false,"glow":false,"cross":false},{"id":13,"key":"yellow","top":"#F2C94C","side":"#E6BB3C","solid":true,"clear":false,"glow":false,"cross":false},{"id":14,"key":"blue","top":"#2F80ED","side":"#276FD1","solid":true,"clear":false,"glow":false,"cross":false},{"id":15,"key":"red","top":"#E8484A","side":"#D23E40","solid":true,"clear":false,"glow":false,"cross":false},{"id":16,"key":"green","top":"#27AE60","side":"#219653","solid":true,"clear":false,"glow":false,"cross":false},{"id":17,"key":"black","top":"#2E2A33","side":"#27232C","solid":true,"clear":false,"glow":false,"cross":false},{"id":18,"key":"books","top":"#C49A6C","side":"#8C5A3C","solid":true,"clear":false,"glow":false,"cross":false},{"id":19,"key":"water","top":"#5AA9E6","side":"#4F9BD9","solid":false,"clear":true,"glow":false,"cross":false},{"id":20,"key":"flowers","top":"#F0617A","side":"#6FBF4B","solid":false,"clear":false,"glow":false,"cross":true},{"id":21,"key":"lamp","top":"#FFE58A","side":"#FFD95A","solid":true,"clear":false,"glow":true,"cross":false},{"id":22,"key":"gold","top":"#F5B301","side":"#E0A300","solid":true,"clear":false,"glow":false,"cross":false},{"id":23,"key":"bedrock","top":"#4A4F57","side":"#4A4F57","solid":true,"clear":false,"glow":false,"cross":false},{"id":24,"key":"school","top":"#F2C94C","side":"#EAD9A0","solid":true,"clear":false,"glow":false,"cross":false},{"id":25,"key":"tallgrass","top":"#5DAE3E","side":"#5DAE3E","solid":false,"clear":false,"glow":false,"cross":true},{"id":26,"key":"cobble","top":"#8A8F95","side":"#8A8F95","solid":true,"clear":false,"glow":false,"cross":false},{"id":27,"key":"sandstone","top":"#E3CB8F","side":"#D9BE7E","solid":true,"clear":false,"glow":false,"cross":false},{"id":28,"key":"snow","top":"#FBFDFF","side":"#EEF4FA","solid":true,"clear":false,"glow":false,"cross":false},{"id":29,"key":"orange","top":"#F2994A","side":"#E0873A","solid":true,"clear":false,"glow":false,"cross":false},{"id":30,"key":"pink","top":"#F497C0","side":"#E585B0","solid":true,"clear":false,"glow":false,"cross":false},{"id":31,"key":"ice","top":"#A9D8F5","side":"#9CCDEE","solid":true,"clear":true,"glow":false,"cross":false},{"id":32,"key":"torch","top":"#FFB547","side":"#8B6A4E","solid":false,"clear":false,"glow":true,"cross":true},{"id":33,"key":"start","top":"#27AE60","side":"#219653","solid":true,"clear":false,"glow":true,"cross":false},{"id":34,"key":"finish","top":"#FFFFFF","side":"#27221A","solid":true,"clear":false,"glow":true,"cross":false},{"id":35,"key":"checkpoint","top":"#F2C94C","side":"#E0A300","solid":true,"clear":false,"glow":false,"cross":false},{"id":36,"key":"lava","top":"#FF6A1A","side":"#E24A0E","solid":true,"clear":false,"glow":true,"cross":false},{"id":37,"key":"bounce","top":"#7ED957","side":"#5BBF3A","solid":true,"clear":false,"glow":false,"cross":false},{"id":38,"key":"question","top":"#8E44D6","side":"#7B35C1","solid":true,"clear":false,"glow":true,"cross":false},{"id":39,"key":"lift","top":"#A7B3C2","side":"#8794A5","solid":true,"clear":false,"glow":false,"cross":false},{"id":40,"key":"door","top":"#B98C5C","side":"#A0703F","solid":true,"clear":false,"glow":false,"cross":false},{"id":41,"key":"button","top":"#E8484A","side":"#9AA0A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":42,"key":"lever","top":"#8A8F95","side":"#8A8F95","solid":true,"clear":false,"glow":false,"cross":false},{"id":43,"key":"leverOn","top":"#27AE60","side":"#8A8F95","solid":true,"clear":false,"glow":true,"cross":false},{"id":44,"key":"chair","top":"#C44B4B","side":"#B98C5C","solid":true,"clear":false,"glow":false,"cross":false},{"id":45,"key":"stove","top":"#2E2A33","side":"#DDE1E6","solid":true,"clear":false,"glow":false,"cross":false},{"id":46,"key":"fridge","top":"#F4F6F8","side":"#E9EDF1","solid":true,"clear":false,"glow":false,"cross":false},{"id":47,"key":"sink","top":"#D9D2C5","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":48,"key":"counter","top":"#D9D2C5","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":49,"key":"wallCabinet","top":"#8DB497","side":"#9CC3A6","solid":true,"clear":false,"glow":false,"cross":false},{"id":50,"key":"table","top":"#C49A6C","side":"#A87B4F","solid":true,"clear":false,"glow":false,"cross":false},{"id":51,"key":"tiles","top":"#F7F8FA","side":"#F7F8FA","solid":true,"clear":false,"glow":false,"cross":false},{"id":52,"key":"checker","top":"#2E2A33","side":"#F4F1EC","solid":true,"clear":false,"glow":false,"cross":false},{"id":53,"key":"asphalt","top":"#46494F","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":54,"key":"roadWhite","top":"#F2F2EE","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":55,"key":"roadYellow","top":"#F2C230","side":"#3A3D42","solid":true,"clear":false,"glow":false,"cross":false},{"id":56,"key":"sidewalk","top":"#C9C6BF","side":"#B3AFA7","solid":true,"clear":false,"glow":false,"cross":false},{"id":57,"key":"bikeLane","top":"#B8574A","side":"#9C4A3F","solid":true,"clear":false,"glow":false,"cross":false}];
-    // текст функции из пакета: загрузчики TypeScript (tsx, esbuild с keepNames) вставляют в него вызовы __name — здесь она ничего не делает
+    // the function's source from the package: TypeScript loaders (tsx, esbuild with keepNames) insert __name calls into it — here it does nothing
     var __name = function (t) { return t; };
     var paintBlockTiles = function paintBlockTiles(blocks                                                                       , cols        , T        , d                   , width        )       {
                                       
   const hex = (h        )      => { const n = parseInt(h.slice(1), 16); return [(n >> 16) & 255, (n >> 8) & 255, n & 255]; };
   const mul = (c     , k        )      => [c[0] * k, c[1] * k, c[2] * k];
 
-  // детерминированный генератор: одна и та же плитка — один и тот же узор
+  // deterministic generator: the same tile always gets the same pattern
   function rng(seed        ) {
     let a = seed >>> 0;
     return () => { a = (a + 0x6d2b79f5) >>> 0; let t = a; t = Math.imul(t ^ (t >>> 15), t | 1); t ^= t + Math.imul(t ^ (t >>> 7), t | 61); return ((t ^ (t >>> 14)) >>> 0) / 4294967296; };
@@ -944,7 +943,7 @@
 
   function paint(t      , b                                                        , face      ) {
     const S = 16, top = hex(b.top), side = hex(b.side), base = face === 'top' ? top : side, { set, fill, r } = t;
-    const wood = (c     ) => {                        // доски: полосы по 4 пикселя, стыки, волокна
+    const wood = (c     ) => {                        // planks: 4-pixel bands, joints, grain
       fill(c, 0.08);
       for (let y = 0; y < S; y++) { if (y % 4 === 3) for (let x = 0; x < S; x++) set(x, y, mul(c, 0.72)); }
       for (let row = 0; row < 4; row++) { const sx = Math.floor(r() * S); for (let y = row * 4; y < row * 4 + 3; y++) set(sx, y, mul(c, 0.8)); }
@@ -964,7 +963,7 @@
         break;
       case 'cobble': {
         fill(base, 0.1);
-        // камни: сетка 4×4 со сдвигом, у каждого свой тон, между ними тёмные швы
+        // stones: an offset 4×4 grid, each stone its own tone, dark seams between them
         for (let cy = 0; cy < 4; cy++) for (let cx = 0; cx < 4; cx++) {
           const k = 0.85 + r() * 0.3, ox = cy % 2 ? 2 : 0;
           for (let y = cy * 4; y < cy * 4 + 4; y++) for (let x = cx * 4; x < cx * 4 + 4; x++) {
@@ -1027,7 +1026,7 @@
       }
       case 'white': case 'school': fill(base, 0.05); if (b.key === 'school') for (let x = 0; x < S; x++) set(x, 7, mul(base, 0.92)); break;
       case 'flowers': {
-        // стебли и листья, сверху цветки цвета блока с жёлтой серединкой
+        // stems and leaves, flowers in the block color on top with a yellow center
         for (const [fx, fy] of [[4, 4], [11, 6], [7, 9]]         ) {
           for (let y = fy + 1; y < S; y++) set(fx, y, hex('#3F9E4F'));
           set(fx - 1, fy + 5, hex('#5DAE3E')); set(fx + 1, fy + 7, hex('#5DAE3E'));
@@ -1049,22 +1048,22 @@
         break;
       case 'start':
         fill(base, 0.08);
-        if (face === 'top') for (let y = 3; y <= 12; y++) for (let x = 0; x < S; x++) {   // белая стрелка «вперёд»
+        if (face === 'top') for (let y = 3; y <= 12; y++) for (let x = 0; x < S; x++) {   // a white "forward" arrow
           const head = y <= 7 && Math.abs(x - 7.5) <= 7 - y + 3, shaft = y > 7 && Math.abs(x - 7.5) <= 2;
           if (head || shaft) set(x, y, [255, 255, 255]);
         } else for (let x = 0; x < S; x++) { set(x, 0, [255, 255, 255]); set(x, S - 1, mul(base, 0.7)); }
         break;
       case 'finish':
-        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) set(x, y, ((x >> 2) + (y >> 2)) % 2 ? [39, 34, 26] : [255, 255, 255]);   // шахматка
+        for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) set(x, y, ((x >> 2) + (y >> 2)) % 2 ? [39, 34, 26] : [255, 255, 255]);   // checkerboard
         break;
       case 'checkpoint':
         fill(base, 0.08);
-        for (let y = 3; y < 13; y++) set(5, y, [39, 34, 26]);                        // флажок
+        for (let y = 3; y < 13; y++) set(5, y, [39, 34, 26]);                        // a flag
         for (let y = 3; y < 7; y++) for (let x = 6; x < 6 + (7 - y) + 4; x++) set(x, y, [175, 88, 234]);
         break;
       case 'lava':
         fill(base, 0.25);
-        for (let i = 0; i < 22; i++) set(r() * S | 0, r() * S | 0, [255, 214, 90]);  // горячие искры
+        for (let i = 0; i < 22; i++) set(r() * S | 0, r() * S | 0, [255, 214, 90]);  // hot sparks
         for (let i = 0; i < 14; i++) set(r() * S | 0, r() * S | 0, [170, 40, 10]);
         break;
       case 'bounce':
@@ -1073,7 +1072,7 @@
         if (face !== 'top') for (let x = 0; x < S; x++) for (const y of [4, 8, 12]) set(x, y, mul(base, 0.8));
         break;
       case 'door': {
-        // деревянная дверь: доски, две филёнки, сбоку — латунная ручка
+        // a wooden door: planks, two panels, a brass handle at the side
         wood(base);
         if (face !== 'top') {
           for (const [y0, y1] of [[2, 6], [9, 13]]                           ) for (let y = y0; y <= y1; y++) for (let x = 3; x <= 12; x++) {
@@ -1085,7 +1084,7 @@
         break;
       }
       case 'button': {
-        // стальная панель с красной круглой кнопкой
+        // a steel panel with a round red button
         fill(hex('#9AA0A6'), 0.05);
         for (let i = 0; i < S; i++) { set(i, 0, [110, 116, 122]); set(i, S - 1, [110, 116, 122]); set(0, i, [110, 116, 122]); set(S - 1, i, [110, 116, 122]); }
         for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
@@ -1096,7 +1095,7 @@
         break;
       }
       case 'lever': case 'leverOn': {
-        // булыжное основание и ручка: выключен — наклон влево, включён — вправо, с зелёным набалдашником
+        // a cobblestone base and a handle: off — tilted left, on — right, with a green knob
         const on = b.key === 'leverOn';
         fill(hex('#8A8F95'), 0.14);
         if (face !== 'bottom') for (let i = 0; i < 9; i++) {
@@ -1107,22 +1106,22 @@
         break;
       }
       case 'chair': {
-        // стул: сверху — красная подушка с кантом, сбоку — деревянные ножки и сиденье
+        // a chair: on top a red cushion with piping, on the sides wooden legs and the seat
         if (face === 'top') {
           fill(base, 0.06);
           for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.75)); set(i, S - 1, mul(base, 0.75)); set(0, i, mul(base, 0.75)); set(S - 1, i, mul(base, 0.75)); }
           for (const [x, y] of [[4, 4], [11, 4], [4, 11], [11, 11]]         ) set(x, y, mul(base, 0.8));
         } else {
-          fill(mul(hex('#8B6A4E'), 0.55), 0.05);                                // между ножками — тень под сиденьем
-          for (let y = 0; y < 5; y++) for (let x = 0; x < S; x++) set(x, y, y < 3 ? hex(b.top) : side);   // сиденье с подушкой
-          for (let y = 5; y < S; y++) for (const x of [1, 2, 13, 14]) set(x, y, mul(side, 0.8));   // ножки
+          fill(mul(hex('#8B6A4E'), 0.55), 0.05);                                // between the legs — the shadow under the seat
+          for (let y = 0; y < 5; y++) for (let x = 0; x < S; x++) set(x, y, y < 3 ? hex(b.top) : side);   // seat with a cushion
+          for (let y = 5; y < S; y++) for (const x of [1, 2, 13, 14]) set(x, y, mul(side, 0.8));   // legs
         }
         break;
       }
-      /* ---------------------------------- кухня ---------------------------------- */
+      /* ---------------------------------- kitchen ---------------------------------- */
       case 'stove': {
         if (face === 'top') {
-          // стеклокерамика: четыре конфорки-кольца и блик
+          // glass-ceramic: four ring burners and a highlight
           fill(base, 0.04);
           for (const [cx, cy] of [[4, 4], [11, 4], [4, 11], [11, 11]]         ) for (let y = cy - 4; y <= cy + 4; y++) for (let x = cx - 4; x <= cx + 4; x++) {
             const d = Math.hypot(x - cx + 0.5, y - cy + 0.5);
@@ -1131,21 +1130,21 @@
           for (let i = 0; i < 4; i++) set(13 - i, 1 + i, [88, 84, 96]);
           for (let i = 0; i < S; i++) { set(i, 0, [22, 20, 26]); set(i, S - 1, [22, 20, 26]); set(0, i, [22, 20, 26]); set(S - 1, i, [22, 20, 26]); }
         } else {
-          // сталь: край варочной панели, ручки-регуляторы, дверца духовки со стеклом и ручкой
+          // steel: the hob edge, control knobs, an oven door with glass and a handle
           fill(side, 0.03);
           for (let x = 0; x < S; x++) { set(x, 0, hex(b.top)); set(x, 1, mul(side, 0.8)); set(x, S - 1, mul(side, 0.55)); }
           if (face === 'side') {
             for (const x of [2, 6, 9, 13]) for (const [dx, dy] of [[0, 0], [1, 0], [0, 1], [1, 1]]         ) set(x - 1 + dx, 2 + dy + 1, dx + dy === 0 ? [96, 100, 108] : [58, 60, 66]);
             for (let y = 6; y <= 14; y++) for (let x = 1; x <= 14; x++) set(x, y, mul(side, y === 6 || y === 14 || x === 1 || x === 14 ? 0.78 : 0.94));
-            for (let x = 4; x <= 11; x++) set(x, 7, [150, 156, 166]);                                  // ручка
-            for (let y = 9; y <= 12; y++) for (let x = 3; x <= 12; x++) set(x, y, y === 9 ? [70, 64, 72] : [44, 40, 48]);   // стекло духовки
-            set(4, 10, [242, 153, 74]); set(5, 10, [242, 153, 74]);                                     // огонёк внутри
+            for (let x = 4; x <= 11; x++) set(x, 7, [150, 156, 166]);                                  // handle
+            for (let y = 9; y <= 12; y++) for (let x = 3; x <= 12; x++) set(x, y, y === 9 ? [70, 64, 72] : [44, 40, 48]);   // oven glass
+            set(4, 10, [242, 153, 74]); set(5, 10, [242, 153, 74]);                                     // a flame inside
           }
         }
         break;
       }
       case 'fridge': {
-        // белый холодильник: шов морозилки, две ручки, ножки; сверху — решётка
+        // a white fridge: freezer seam, two handles, feet; a grille on top
         fill(base, 0.03);
         for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.9)); set(0, i, mul(base, 0.92)); set(S - 1, i, mul(base, 0.88)); }
         if (face === 'top') for (let y = 5; y <= 10; y += 2) for (let x = 3; x <= 12; x++) set(x, y, mul(base, 0.82));
@@ -1158,19 +1157,19 @@
       }
       case 'sink': case 'counter': {
         if (face === 'top') {
-          // столешница «под камень»: мелкие крапинки
+          // a stone-look worktop: small specks
           fill(top, 0.04);
           for (let i = 0; i < 22; i++) set(r() * S | 0, r() * S | 0, mul(top, r() < 0.5 ? 0.86 : 1.06));
           for (let i = 0; i < S; i++) { set(i, 0, mul(top, 0.9)); set(i, S - 1, mul(top, 0.9)); set(0, i, mul(top, 0.9)); set(S - 1, i, mul(top, 0.9)); }
           if (b.key === 'sink') {
-            // стальная мойка со сливом и кран у дальнего края
+            // a steel sink with a drain and a tap at the far edge
             for (let y = 5; y <= 13; y++) for (let x = 3; x <= 12; x++) set(x, y, y === 5 || y === 13 || x === 3 || x === 12 ? [150, 156, 166] : [196, 202, 210]);
             for (const [x, y] of [[7, 9], [8, 9], [7, 10], [8, 10]]         ) set(x, y, [108, 114, 124]);
             for (let y = 1; y <= 5; y++) { set(7, y, [166, 172, 182]); set(8, y, [140, 146, 156]); }
             set(6, 2, [120, 126, 136]); set(9, 2, [120, 126, 136]);
           }
         } else {
-          // шкафчик: кромка столешницы, две дверцы с ручками, цоколь
+          // a cabinet: worktop edge, two doors with handles, a plinth
           fill(side, 0.04);
           for (let x = 0; x < S; x++) { set(x, 0, top); set(x, 1, mul(top, 0.8)); set(x, S - 1, mul(side, 0.55)); }
           if (face === 'side') for (const [x0, x1] of [[1, 7], [8, 14]]                           ) for (let y = 3; y <= 13; y++) for (let x = x0; x <= x1; x++) {
@@ -1181,7 +1180,7 @@
         break;
       }
       case 'wallCabinet': {
-        // навесной шкаф: две дверцы, ручки внизу (тянуть вниз удобно)
+        // a wall cabinet: two doors, handles at the bottom (easy to pull down)
         fill(base, 0.04);
         for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.8)); set(i, S - 1, mul(base, 0.8)); set(0, i, mul(base, 0.85)); set(S - 1, i, mul(base, 0.85)); }
         if (face === 'side') {
@@ -1193,7 +1192,7 @@
       case 'table': {
         if (face === 'top') { wood(top); for (let i = 0; i < S; i++) { set(i, 0, mul(top, 0.8)); set(i, S - 1, mul(top, 0.8)); set(0, i, mul(top, 0.8)); set(S - 1, i, mul(top, 0.8)); } }
         else {
-          // сбоку: толстая столешница, под ней тень и ножки по краям (как у стула)
+          // side view: a thick tabletop, shadow under it and legs at the edges (like the chair)
           fill(mul(hex('#8B6A4E'), 0.5), 0.05);
           if (face === 'side') {
             for (let y = 0; y < 3; y++) for (let x = 0; x < S; x++) set(x, y, y === 2 ? mul(top, 0.72) : mul(top, 0.95));
@@ -1204,32 +1203,32 @@
         break;
       }
       case 'tiles': {
-        // кафель 4 × 4 с серыми швами; пара плиток чуть голубее
+        // 4 × 4 tiles with grey seams; a couple of tiles slightly bluer
         fill(base, 0.02);
         for (let ty = 0; ty < 4; ty++) for (let tx = 0; tx < 4; tx++) if (r() < 0.18) for (let y = ty * 4; y < ty * 4 + 3; y++) for (let x = tx * 4; x < tx * 4 + 3; x++) set(x, y, [226, 238, 250]);
         for (let i = 0; i < S; i++) for (const k of [3, 7, 11, 15]) { set(i, k, [200, 205, 212]); set(k, i, [200, 205, 212]); }
         break;
       }
       case 'asphalt': case 'roadWhite': case 'roadYellow': {
-        // асфальт: тёмная крошка; разметка — краска сверху, по бокам асфальт
+        // asphalt: dark grit; road markings are paint on top, asphalt on the sides
         if (face !== 'top' || b.key === 'asphalt') { fill(base, 0.1); for (let i = 0; i < 22; i++) set(r() * S | 0, r() * S | 0, mul(base, r() < 0.5 ? 0.8 : 1.18)); }
         else { fill(base, 0.04); for (let i = 0; i < 10; i++) set(r() * S | 0, r() * S | 0, mul(base, 0.86)); }
         break;
       }
       case 'bikeLane': {
-        // велодорожка: красная крошка, по краям белая полоса (стыкуется вдоль)
+        // bike lane: red grit, a white stripe along the edges (joins lengthwise)
         fill(base, 0.08); for (let i = 0; i < 16; i++) set(r() * S | 0, r() * S | 0, mul(base, r() < 0.5 ? 0.85 : 1.12));
         if (face === 'top') for (let i = 0; i < S; i++) { set(i, 0, [236, 232, 226]); set(0, i, [236, 232, 226]); }
         break;
       }
       case 'sidewalk': {
-        // плитка 8 × 8 со швами
+        // 8 × 8 paving slabs with seams
         fill(base, 0.05);
         for (let i = 0; i < S; i++) for (const k of [7, 15]) { set(i, k, mul(base, 0.78)); set(k, i, mul(base, 0.78)); }
         break;
       }
       case 'checker': {
-        // шахматка 8 × 8: на любой грани и стыкуется с соседними блоками
+        // 8 × 8 checkerboard: on any face, joins with neighboring blocks
         const dark = hex(b.top), light = hex(b.side);
         for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) {
           const c = ((x >> 3) + (y >> 3)) % 2 ? dark : light;
@@ -1238,17 +1237,17 @@
         break;
       }
       case 'lift': {
-        // сверху — стальная плита со стрелками «вверх / вниз», сбоку — двери лифта со швом посередине
+        // on top a steel plate with "up / down" arrows, on the sides lift doors with a seam in the middle
         fill(base, 0.05);
         for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.8)); set(i, S - 1, mul(base, 0.8)); set(0, i, mul(base, 0.8)); set(S - 1, i, mul(base, 0.8)); }
         if (face === 'top') {
           const ink      = [255, 255, 255];
-          for (let k = 0; k < 4; k++) for (let x = 7 - k; x <= 8 + k; x++) { set(x, 2 + k, ink); set(x, 13 - k, ink); }   // стрелки
+          for (let k = 0; k < 4; k++) for (let x = 7 - k; x <= 8 + k; x++) { set(x, 2 + k, ink); set(x, 13 - k, ink); }   // arrows
         } else for (let y = 1; y < S - 1; y++) { set(7, y, mul(base, 0.62)); set(8, y, mul(base, 1.12)); }
         break;
       }
       case 'question': {
-        // фиолетовая плитка с белым «?»
+        // a purple tile with a white "?"
         fill(base, 0.06);
         for (let i = 0; i < S; i++) { set(i, 0, mul(base, 0.75)); set(i, S - 1, mul(base, 0.75)); set(0, i, mul(base, 0.75)); set(S - 1, i, mul(base, 0.75)); }
         const Q = ['.####.', '##..##', '....##', '...##.', '..##..', '..##..', '......', '..##..'];
@@ -1256,7 +1255,7 @@
         break;
       }
       default: {
-        // цветные блоки (как шерсть): мягкий шум и еле заметная «ткань»
+        // colored blocks (like wool): soft noise and a barely visible "weave"
         fill(base, 0.08);
         for (let y = 0; y < S; y++) for (let x = 0; x < S; x++) if ((x + y) % 4 === 0 && r() < 0.5) set(x, y, mul(base, 0.92));
       }
@@ -1282,7 +1281,7 @@
     var BLOCK_BY = {}; BLOCK_DEFS.forEach(function (b) { BLOCK_BY[b.key] = b; BLOCK_BY[String(b.id)] = b; });
     UB.blocks = BLOCK_DEFS.filter(function (b) { return b.id; }).map(function (b) { return b.key; });
     var ATL_C = 16, ATL_T = 16, ATL_R = Math.ceil(BLOCK_DEFS.length * 3 / 16), blockAtlas;
-    // атлас: плитка 0 (у «воздуха» её нет) — белая: по ней красятся цветные кубы без блока в том же меше
+    // atlas: tile 0 ("air" has none) is white: plain colored cubes in the same mesh are tinted through it
     var getAtlas = function () {
       if (blockAtlas !== undefined) return blockAtlas;
       blockAtlas = null;
@@ -1300,7 +1299,7 @@
       var col = tile % ATL_C, row = Math.floor(tile / ATL_C), E = 0.01, uu = E + u * (1 - 2 * E), vv = E + v * (1 - 2 * E);
       return [(col + uu) / ATL_C, 1 - (row + 1 - vv) / ATL_R];
     };
-    // текстура одной плитки блока для коробок любого размера (повторяется, а не растягивается)
+    // a texture of one block tile for boxes of any size (repeats, doesn't stretch)
     var tileTex = {};
     var blockTileTex = function (b, face, rx, ry) {
       var key = b.id + ':' + face + ':' + rx + ':' + ry; if (tileTex[key]) return tileTex[key];
@@ -1321,9 +1320,9 @@
     UB.voxels3d = function (list, o) {
       if (!scene) throw new Error('call UB.create3d first');
       o = o || {}; var size = o.size || 1, n = Math.min(list.length, 60000), hs = size / 2, i;
-      // Сетка: кубы на одной решётке (шаг size) закрывают друг другу грани — рисуем только открытые. Куб вне решётки — целиком.
-      // Мир режем на куски 16×16: куски вне экрана не рисуются. Блоки мира (b: 'grass') — с текстурами мира, растения —
-      // крестиком, стекло / лёд / вода — прозрачные, лампы и факелы светятся; в углах мягкая тень (как в мире школы).
+      // Grid: cubes on one lattice (step = size) hide each other's faces — only open faces are drawn. An off-lattice cube is drawn whole.
+      // The world is cut into 16×16 chunks: chunks off screen aren't drawn. World blocks (b: 'grass') use the world textures, plants are
+      // crossed quads, glass / ice / water are transparent, lamps and torches glow; soft shadows in corners (ambient occlusion).
       var x0 = n ? list[0].x : 0, y0 = n ? list[0].y : 0, z0 = n ? list[0].z : 0, grid = {}, cells = new Array(n), defs = new Array(n), textured = false;
       for (i = 0; i < n; i++) {
         var v = list[i], df = v.b != null ? BLOCK_BY[String(v.b)] || null : null; if (df && !df.id) df = null;
@@ -1331,7 +1330,7 @@
         var gx = (v.x - x0) / size, gy = (v.y - y0) / size, gz = (v.z - z0) / size, rx = Math.round(gx), ry = Math.round(gy), rz = Math.round(gz);
         if (Math.abs(gx - rx) < 0.01 && Math.abs(gy - ry) < 0.01 && Math.abs(gz - rz) < 0.01) {
           cells[i] = [rx, ry, rz];
-          if (!(df && df.cross)) grid[rx + ',' + ry + ',' + rz] = df && df.clear ? 1000 + df.id : 1;   // 1 — непрозрачный куб
+          if (!(df && df.cross)) grid[rx + ',' + ry + ',' + rz] = df && df.clear ? 1000 + df.id : 1;   // 1 — an opaque cube
         }
       }
       var A = textured ? getAtlas() : null;
@@ -1354,9 +1353,9 @@
         var jit = 1 + (((i * 73856093) ^ (i * 19349663)) & 7) / 160 - 0.02;
         if (df2) col.setRGB(jit, jit, jit); else { col.set(w.c || '#cccccc'); if (o.jitter !== false) col.offsetHSL(0, 0, (((i * 9301 + 49297) % 233280) / 233280 - 0.5) * 0.07); }
         if (df2 && df2.cross) {
-          // растение: две скрещённые картинки (видны с обеих сторон)
+          // a plant: two crossed pictures (visible from both sides)
           var bfc = bufOf(w, df2.glow ? 'glow' : 'cutout'), a = 0.35 * size, t1 = df2.id * 3 + 1, cc = [col.r, col.g, col.b];
-          // каждая картинка — двумя гранями (лицом и спиной), обе освещены как верх блока: иначе обратная сторона была бы тёмной
+          // each picture is two faces (front and back), both lit like a block top: otherwise the back side would be dark
           [[-a, -a, a, a], [a, -a, -a, a], [a, a, -a, -a], [-a, a, a, -a]].forEach(function (d4) {
             quad(bfc, [[w.x + d4[0], w.y - hs, w.z + d4[1]], [w.x + d4[2], w.y - hs, w.z + d4[3]], [w.x + d4[2], w.y + hs, w.z + d4[3]], [w.x + d4[0], w.y + hs, w.z + d4[1]]],
               [0, 1, 0], [cc, cc, cc, cc], [tileUV(t1, 0, 0), tileUV(t1, 1, 0), tileUV(t1, 1, 1), tileUV(t1, 0, 1)], false);
@@ -1368,8 +1367,8 @@
           var F = FACES[f];
           if (c) {
             var nb = grid[(c[0] + F[0]) + ',' + (c[1] + F[1]) + ',' + (c[2] + F[2])];
-            if (nb === 1) continue;                                   // сосед — непрозрачный куб
-            if (kind === 'clear' && nb === 1000 + df2.id) continue;   // между одинаковым стеклом / водой граней нет
+            if (nb === 1) continue;                                   // the neighbor is an opaque cube
+            if (kind === 'clear' && nb === 1000 + df2.id) continue;   // no faces between the same glass / water
           }
           var pts = [], cols = [], uvs = [], ao = [];
           var tile = df2 ? df2.id * 3 + (F[1] > 0 ? 0 : F[1] < 0 ? 2 : 1) : 0;
@@ -1378,7 +1377,7 @@
             var px = w.x + hs * (F[0] + su * F[3] + sv * F[6]), py = w.y + hs * (F[1] + su * F[4] + sv * F[7]), pz = w.z + hs * (F[2] + su * F[5] + sv * F[8]);
             pts.push([px, py, pz]);
             var k2 = 3;
-            if (c && kind === 'opaque') {   // мягкая тень в углу: соседи по двум сторонам и по диагонали в слое перед гранью
+            if (c && kind === 'opaque') {   // soft corner shadow: neighbors on both sides and diagonally in the layer in front of the face
               var ox = c[0] + F[0], oy = c[1] + F[1], oz = c[2] + F[2];
               var s1 = opq(ox + su * F[3], oy + su * F[4], oz + su * F[5]), s2 = opq(ox + sv * F[6], oy + sv * F[7], oz + sv * F[8]);
               var cn = opq(ox + su * F[3] + sv * F[6], oy + su * F[4] + sv * F[7], oz + su * F[5] + sv * F[8]);
@@ -1386,7 +1385,7 @@
             }
             ao.push(k2); var sh = AOV[k2]; cols.push([col.r * sh, col.g * sh, col.b * sh]);
             if (!df2) { uvs.push(white); continue; }
-            // координаты плитки: у боковых граней «верх» плитки — вверх (+y), у верха и низа — по x / z
+            // tile coordinates: on side faces the tile's "up" is up (+y), on top and bottom along x / z
             var cx = (px - w.x) / size + 0.5, cy = (py - w.y) / size + 0.5, cz = (pz - w.z) / size + 0.5;
             var uu = F[0] > 0 ? 1 - cz : F[0] < 0 ? cz : F[2] > 0 ? cx : F[2] < 0 ? 1 - cx : cx, vv2 = F[1] !== 0 ? 1 - cz : cy;
             uvs.push(tileUV(tile, uu, vv2));
@@ -1415,7 +1414,7 @@
         grp.add(m); geos.push(geo);
       });
       scene.add(grp);
-      // для физики — только твёрдые (сквозь воду, цветы и факелы проходим)
+      // physics gets only solid ones (water, flowers and torches are walk-through)
       var solidList = [], solidCells = {}; for (i = 0; i < n; i++) if (!defs[i] || (defs[i].solid && !defs[i].cross)) { solidList.push(list[i]); if (cells[i]) solidCells[cells[i].join(',')] = 1; }
       var h = { mesh: grp, solid: !!o.solid, list: solidList, cells: solidCells, o: [x0, y0, z0], size: size, col: null,
         remove: function () { if (h.col && pw) pw.removeCollider(h.col, true); h.col = null; scene.remove(grp); geos.forEach(function (g3) { g3.dispose(); }); Object.keys(mats).forEach(function (k) { mats[k].dispose(); }); var k = vox.indexOf(h); if (k >= 0) vox.splice(k, 1); } };
@@ -1429,8 +1428,8 @@
       cam = Object.assign({ mode: 'follow', distance: 9, height: 5 }, o || {});
       if (cam.mode === 'first') { if (cam.yaw == null) cam.yaw = keep.yaw || 0; if (cam.pitch == null) cam.pitch = keep.pitch || 0; lookInput(); }
     };
-    // Вид от первого лица: мышь (захват курсора по клику) или палец по правой половине экрана вращают взгляд; стрелки — поворот.
-    // cam.yaw = 0 — смотрим в −z (как камера сзади); UB.look = { yaw, pitch } — для игры (например, стрелять туда, куда смотришь).
+    // First person: the mouse (pointer lock on click) or a finger on the right half of the screen turns the view; arrows turn too.
+    // cam.yaw = 0 looks toward −z (like the chase camera); UB.look = { yaw, pitch } — for the game (e.g. shoot where you look).
     var lookMade = false;
     var lookInput = function () {
       if (lookMade) return; lookMade = true;
@@ -1443,10 +1442,10 @@
       var up = function (ev) { if (lp && ev.pointerId === lp.id) lp = null; }; window.addEventListener('pointerup', up); window.addEventListener('pointercancel', up);
     };
     UB.look = { yaw: 0, pitch: 0 };
-    // угол обзора камеры (градусы): приближение прицела и т. п.
+    // camera field of view (degrees): scope zoom and the like
     UB.fov3d = function (deg) { if (camera && deg && Math.abs(camera.fov - deg) > 0.01) { camera.fov = deg; camera.updateProjectionMatrix(); } };
-    // ==== Звук в пространстве: «уши» (AudioListener) — на герое (цели камеры), повёрнуты как камера; источники — PannerNode ====
-    // Фоновые звуки мира — без файлов: при первом использовании синтезируем петлю (шум + фильтры + щелчки), склейка петли без щелчка.
+    // ==== Spatial sound: the "ears" (AudioListener) are on the hero (the camera target), turned like the camera; sources are PannerNodes ====
+    // Ambient world sounds without files: a loop is synthesized on first use (noise + filters + clicks), joined without a click.
     var mkPanner = function (x, y, z, ref) {
       var p = ac.createPanner();
       p.panningModel = touch ? 'equalpower' : 'HRTF'; p.distanceModel = 'inverse'; p.refDistance = ref || 3; p.maxDistance = 80; p.rolloffFactor = 1.3;
@@ -1461,7 +1460,7 @@
       var a = new Float32Array(N + F), i, b0 = 0, b1 = 0, br = 0, t;
       for (i = 0; i < N + F; i++) {
         var w = Math.random() * 2 - 1; t = i / sr;
-        br = (br + 0.02 * w) / 1.02; b0 = 0.99 * b0 + w * 0.1; b1 = 0.9 * b1 + w * 0.3;   // коричневый, розоватый, мягкий шум
+        br = (br + 0.02 * w) / 1.02; b0 = 0.99 * b0 + w * 0.1; b1 = 0.9 * b1 + w * 0.3;   // brown, pinkish and soft noise
         if (kind === 'fire') a[i] = br * 2.2 + (Math.random() < 0.0009 ? (Math.random() * 2 - 1) * 0.9 : 0);
         else if (kind === 'water') a[i] = (b1 * 0.5 + w * 0.05) * (0.75 + 0.25 * Math.sin(t * 7 + Math.sin(t * 3) * 2));
         else if (kind === 'rain') a[i] = w * 0.22 + b1 * 0.15;
@@ -1473,22 +1472,22 @@
         else if (kind === 'birds') a[i] = 0;
         else a[i] = w * 0.1;
       }
-      if (kind === 'birds') for (var c = 0; c < 9; c++) {   // щебет: короткие свисты с трелью в случайные моменты
+      if (kind === 'birds') for (var c = 0; c < 9; c++) {   // birdsong: short whistles with a trill at random moments
         var st = Math.floor(Math.random() * (N - sr * 0.4)), f0 = 2200 + Math.random() * 1800, ph = 0;
         for (i = 0; i < sr * 0.25; i++) { t = i / sr; var f = f0 + Math.sin(t * 90) * 400 - t * 2000; ph += f / sr; a[st + i] += Math.sin(ph * Math.PI * 2) * 0.18 * Math.sin(Math.PI * t / 0.25); }
       }
-      if (kind === 'fire') for (i = 1; i < N + F; i++) a[i] = a[i] * 0.6 + a[i - 1] * 0.4;   // треск мягче
-      for (i = 0; i < F; i++) a[i] = a[i] * (i / F) + a[N + i] * (1 - i / F);   // петля без щелчка на стыке
+      if (kind === 'fire') for (i = 1; i < N + F; i++) a[i] = a[i] * 0.6 + a[i - 1] * 0.4;   // softer crackle
+      for (i = 0; i < F; i++) a[i] = a[i] * (i / F) + a[N + i] * (1 - i / F);   // loop without a click at the seam
       var buf = ac.createBuffer(1, N, sr); buf.getChannelData(0).set(a.subarray(0, N));
       return (LOOPS[kind] = buf);
     };
-    // UB.sound3d('fire', { x, y, z | follow: e, volume }) — фоновый звук мира (без x/z/follow — просто фоном, например дождь)
+    // UB.sound3d('fire', { x, y, z | follow: e, volume }) — an ambient world sound (no x/z/follow — just background, e.g. rain)
     UB.sound3d = function (kind, o) {
       o = o || {};
       var h = { kind: kind, x: o.x || 0, y: o.y == null ? 1 : o.y, z: o.z || 0, follow: o.follow || null, vol: o.volume == null ? 1 : o.volume, src: null, gain: null, pan: null, dead: false,
         positional: o.follow != null || o.x != null || o.z != null };
       h.start = function () {
-        if (h.src || h.dead || !ac || loops.filter(function (l) { return l.src; }).length >= 8) return;   // не больше 8 петель сразу
+        if (h.src || h.dead || !ac || loops.filter(function (l) { return l.src; }).length >= 8) return;   // at most 8 loops at once
         h.src = ac.createBufferSource(); h.src.buffer = bake(kind); h.src.loop = true;
         h.gain = ac.createGain(); h.gain.gain.setValueAtTime(0, ac.currentTime); h.gain.gain.linearRampToValueAtTime(0.35 * h.vol, ac.currentTime + 0.4);
         h.src.connect(h.gain);
@@ -1503,7 +1502,7 @@
       h.remove = h.stop;
       loops.push(h); h.start(); return h;
     };
-    // каждый кадр: уши за героем, источники за своими объектами; звук ещё не разрешён браузером — петли стартуют после первого касания
+    // every frame: ears follow the hero, sources follow their objects; sound not yet allowed by the browser — loops start after the first tap
     var stepAudio = function () {
       if (!ac || !camera) return;
       var L = ac.listener, t = cam && cam.target, px = t ? t.x : camera.position.x, py = t ? t.y + 0.6 : camera.position.y, pz = t ? t.z : camera.position.z;
@@ -1516,9 +1515,9 @@
         if (h.pan) setPos(h.pan, h.x, h.y, h.z);
       }
     };
-    // ==== Пачки неподвижных объектов (автоматически): объект стоит на месте 30 кадров — его рисует общий InstancedMesh
-    // (одна команда рисования на все такие кубы / шары / части деревьев и т. п.); сдвинулся, спрятан, перекрашен — сразу снова свой меш.
-    // Рисует не игра, а движок: игра ничего не замечает (e.x, e.visible, e.setColor работают как раньше).
+    // ==== Batches of still objects (automatic): an object that stays put for 30 frames is drawn by a shared InstancedMesh
+    // (one draw call for all such cubes / spheres / tree parts and so on); moved, hidden, recolored — it gets its own mesh back at once.
+    // The engine draws it, not the game: the game notices nothing (e.x, e.visible, e.setColor work as before).
     var batches = {}, BATCH_UNIT = null;
     var batchFor = function (key, geo, srcMat) {
       var b = batches[key]; if (b && b.free.length) return b;
@@ -1530,7 +1529,7 @@
       if (b) { var m4 = new T.Matrix4(), cc = new T.Color(); for (i = 0; i < b.cap; i++) { b.mesh.getMatrixAt(i, m4); im.setMatrixAt(i, m4); b.mesh.getColorAt(i, cc); im.setColorAt(i, cc); } scene.remove(b.mesh); b.mesh.dispose(); }
       if (b) nb.free = b.free.slice();
       for (i = cap - 1; i >= (b ? b.cap : 0); i--) nb.free.push(i);
-      nb.free.sort(function (x, y) { return y - x; });   // pop() — самое маленькое: занятые места держим в начале, рисуем только их (count)
+      nb.free.sort(function (x, y) { return y - x; });   // pop() gives the smallest: occupied slots stay at the start, only they are drawn (count)
       im.count = b ? b.mesh.count : 0;
       im.instanceMatrix.needsUpdate = true; im.instanceColor.needsUpdate = true;
       scene.add(im); batches[key] = nb; return nb;
@@ -1550,7 +1549,7 @@
       else parts.push({ m: e.mesh, key: 's:' + e.shape });
       for (var i = 0; i < parts.length; i++) {
         var m = parts[i].m, mt = m.material;
-        if (!mt || mt.transparent || mt.map) return;   // такой части в пачке не место — объект остаётся сам по себе
+        if (!mt || mt.transparent || mt.map) return;   // this part doesn't belong in a batch — the object stays on its own
       }
       parts.forEach(function (pt) {
         var m = pt.m, mt = m.material, geo = m.geometry, key = pt.key;
@@ -1558,7 +1557,7 @@
           key += ':' + (mt.emissive ? mt.emissive.getHex() : 0);
           bS.copy(e.mesh.scale); bM.compose(bP, bQ, bS); m.updateMatrix(); bL.multiplyMatrices(bM, m.matrix);
         } else {
-          // единичная фигура, растянутая до размеров объекта: все кубы любых размеров и цветов — одна пачка
+          // a unit shape stretched to the object's size: all cubes of any size and color are one batch
           var pr = geo.parameters || {}, sx, sy, sz;
           if (e.shape === 'sphere') { sx = sy = sz = (pr.radius || 0.5) * 2; } else if (e.shape === 'cylinder' || e.shape === 'cone') { sx = sz = (pr.radiusBottom || pr.radius || 0.5) * 2; sy = pr.height || 1; }
           else { sx = pr.width || 1; sy = pr.height || 1; sz = pr.depth || 1; }
@@ -1569,7 +1568,7 @@
         var b = batchFor(key, geo, mt), slot = b.free.pop(); b.occ[slot] = true; if (slot >= b.mesh.count) b.mesh.count = slot + 1;
         b.mesh.setMatrixAt(slot, bL); b.mesh.setColorAt(slot, mt.color || new T.Color(1, 1, 1));
         b.mesh.instanceMatrix.needsUpdate = true; b.mesh.instanceColor.needsUpdate = true;
-        if (!m.castShadow) b.mesh.castShadow = b.mesh.castShadow;   // тень — по пачке (почти все отбрасывают)
+        if (!m.castShadow) b.mesh.castShadow = b.mesh.castShadow;   // shadow per batch (almost everything casts one)
         slots.push({ key: key, slot: slot }); m.visible = false;
       });
       e._sleep = slots;
@@ -1595,15 +1594,15 @@
         if (++e._still >= 30) sleepE(e);
       }
     };
-    // ==== Частицы и эффекты: один THREE.Points на эффект (одна отрисовка), движение считаем сами, форма точки — в шейдере ====
-    // Эффекты только для красоты: считаются в render3d (скрытая вкладка их не считает), на игру не влияют.
+    // ==== Particles and effects: one THREE.Points per effect (one draw call), motion computed here, point shape in the shader ====
+    // Effects are visual only: updated in render3d (a hidden tab doesn't update them), they don't affect the game.
     var effects = [], fxTotal = 0;
     var PART_VS = 'attribute float aSize; attribute vec3 aColor; attribute float aAlpha; varying vec3 vC; varying float vA; uniform float uScale;' +
       'void main() { vC = aColor; vA = aAlpha; vec4 mv = modelViewMatrix * vec4(position, 1.0); gl_PointSize = aSize * uScale / max(0.1, -mv.z); gl_Position = projectionMatrix * mv; }';
     var PART_FS = 'varying vec3 vC; varying float vA; uniform int uKind; void main() { vec2 p = gl_PointCoord - 0.5; float d = length(p); float a;' +
-      ' if (uKind == 1) a = smoothstep(0.1, 0.0, abs(p.x)) * smoothstep(0.5, 0.25, abs(p.y));' +   // капля дождя — черта
-      ' else if (uKind == 2) a = smoothstep(0.5, 0.42, d) * smoothstep(0.28, 0.4, d) + smoothstep(0.2, 0.0, length(p + vec2(0.15, 0.15))) * 0.8;' +   // пузырь — кольцо с бликом
-      ' else if (uKind == 3) a = step(max(abs(p.x), abs(p.y) * 1.6), 0.42);' +   // конфетти — прямоугольник
+      ' if (uKind == 1) a = smoothstep(0.1, 0.0, abs(p.x)) * smoothstep(0.5, 0.25, abs(p.y));' +   // raindrop — a streak
+      ' else if (uKind == 2) a = smoothstep(0.5, 0.42, d) * smoothstep(0.28, 0.4, d) + smoothstep(0.2, 0.0, length(p + vec2(0.15, 0.15))) * 0.8;' +   // bubble — a ring with a highlight
+      ' else if (uKind == 3) a = step(max(abs(p.x), abs(p.y) * 1.6), 0.42);' +   // confetti — a rectangle
       ' else a = smoothstep(0.5, 0.0, d);' +
       ' if (a * vA < 0.01) discard; gl_FragColor = vec4(vC, a * vA); }';
     var up = function (a, b, side) { return function (v) { v[0] = rand(-side, side); v[1] = rand(a, b); v[2] = rand(-side, side); }; };
@@ -1630,7 +1629,7 @@
       if (!scene) throw new Error('call UB.create3d first');
       o = o || {};
       var P = PRESETS[name] || PRESETS.sparks, sc = o.scale || 1;
-      var lod = quality && !quality.shadows ? 0.6 : 1;   // слабое устройство (тени уже выключены) — частиц меньше
+      var lod = quality && !quality.shadows ? 0.6 : 1;   // slow device (shadows already off) — fewer particles
       var cols = (o.color ? [color(o.color).lerp(new T.Color(0xffffff), 0.45), color(o.color)] : P.colors.map(color));
       var pick = o.color ? (P.pick || false) : P.pick;
       if (o.color && (name === 'burst' || name === 'confetti')) { cols = [color(o.color)]; }
@@ -1682,7 +1681,7 @@
       fx.remove = function () { var k = effects.indexOf(fx); if (k < 0) return; effects.splice(k, 1); fxTotal -= n; scene.remove(pts); geo.dispose(); mat.dispose(); };
       effects.push(fx);
       if (P.then) UB.effect3d(P.then, { x: fx.x, y: fx.y, z: fx.z, scale: sc, sound: false });
-      // звук эффекта (sound: false — без него): разовые — один раз из точки, постоянные — петля, которая ходит за эффектом
+      // the effect's sound (sound: false — none): one-shots play once from the point, continuous ones loop and follow the effect
       if (o.sound !== false) {
         var at = { x: fx.x, y: fx.y, z: fx.z };
         if (P.sfx) UB.sfx(P.sfx, { at: fx.follow || at, volume: o.volume });
@@ -1692,9 +1691,9 @@
       return fx;
     };
     UB.burst3d = function (x, y, z, o) { o = o || {}; return UB.effect3d('burst', { x: x, y: y, z: z, color: o.color, count: o.count }); };
-    // ореол у светящихся объектов (glow и монеты / кристаллы / звёзды / порталы): мягкое свечение вместо дорогой постобработки
+    // halo around glowing objects (glow and coins / crystals / stars / portals): soft glow instead of costly post-processing
     var haloTex = null;
-    // ореол готовых моделей: цвет, размер (м, до масштаба модели) и высота центра от середины хитбокса — только светящаяся часть
+    // halo of ready-made models: color, size (m, before model scale) and center height from the hitbox middle — only the glowing part
     var HALO = { coin: ['#ffd166', 1.4, 0], crystal: ['#7df9ff', 1.8, 0], star: ['#ffd166', 1.7, 0], heart: ['#ff4d6d', 1.4, 0], key: ['#ffd166', 1.2, 0], portal: ['#b388ff', 3, 0], lamp: ['#fff3b0', 1.3, 1.45] };
     var addHalo = function (mesh, c, sz) {
       if (!haloTex) {
@@ -1705,12 +1704,12 @@
       var sp = new T.Sprite(new T.SpriteMaterial({ map: haloTex, color: color(c), blending: T.AdditiveBlending, transparent: true, depthWrite: false, opacity: 0.5 }));
       sp.scale.set(sz, sz, 1); sp.renderOrder = 1; mesh.add(sp); return sp;
     };
-    // Игрок: ходьба относительно камеры (WASD / стрелки / джойстик), прыжок (Space / кнопка), гравитация, столкновения с solid
+    // Player: walking relative to the camera (WASD / arrows / joystick), jump (Space / button), gravity, collisions with solid
     UB.player3d = function (e, o) {
       o = o || {};
       var pc = { e: e, speed: o.speed || 7, jump: o.jump || 10, gravity: o.gravity || 28, onGround: false, enabled: true };
       players.push(pc); e.vx = e.vy = e.vz = 0; e._isPlayer = true; e._pc = pc;
-      if ((e.shape === 'character' || e.shape === 'model') && !e.rotY) e.rotY = Math.PI;   // герой стоит спиной к камере: вперёд — это −z
+      if ((e.shape === 'character' || e.shape === 'model') && !e.rotY) e.rotY = Math.PI;   // the hero stands with its back to the camera: forward is −z
       if (touch && !padMade) makePad();
       if (cam.mode === 'fixed' && cam.target == null) cam = { mode: 'follow', target: e, distance: 9, height: 5 };
       return pc;
@@ -1742,7 +1741,7 @@
     var cellBox = { x: 0, y: 0, z: 0, w: 1, h: 1, d: 1 };
     var collide = function (e, axis) {
       for (var i = 0; i < ents.length; i++) { var s = ents[i]; if (s !== e && s.solid && UB.hit3d(e, s)) resolve(e, s, axis); }
-      // мир из кубиков (UB.voxels3d с solid: true): твёрдые клетки вокруг героя — как твёрдые коробки (и без физики)
+      // a cube world (UB.voxels3d with solid: true): solid cells around the hero act as solid boxes (even without physics)
       for (var vi = 0; vi < vox.length; vi++) {
         var hv = vox[vi]; if (!hv.solid || !hv.cells) continue;
         var sz = hv.size, o = hv.o, r = function (c, k) { return Math.round((c - o[k]) / sz); };
@@ -1753,13 +1752,13 @@
         }
       }
     };
-    // ==== Физика (Rapier; библиотека на странице, только если игра зовёт UB.body / UB.physics) ====
-    // Тела живут в мире Rapier, объект мира повторяет тело каждый кадр (e.x/e.y/e.z и поворот). Все solid-объекты (и земля)
-    // становятся твёрдыми для физики сами; игрок UB.player3d ходит «контроллером персонажа»: ступеньки, склоны, толкает ящики.
+    // ==== Physics (Rapier; the library is on the page only if the game calls UB.body / UB.physics) ====
+    // Bodies live in the Rapier world, the world object follows its body every frame (e.x/e.y/e.z and rotation). All solid objects (and the ground)
+    // become solid for physics by themselves; the UB.player3d hero walks with a character controller: steps, slopes, pushing crates.
     var R = window.RAPIER, pw = null, pq = null, pcc = null, byCol = {}, physGrav = 18;
     var yawQ = function (r) { return { x: 0, y: Math.sin(r / 2), z: 0, w: Math.cos(r / 2) }; };
     var qYaw = function (q) { return Math.atan2(2 * (q.w * q.y + q.x * q.z), 1 - 2 * (q.y * q.y + q.x * q.x)); };
-    var qRot = function (q, v) {   // поворот вектора кватернионом (обратный — с q.x, q.y, q.z со знаком минус)
+    var qRot = function (q, v) {   // rotate a vector by a quaternion (inverse — with q.x, q.y, q.z negated)
       var ix = q.w * v.x + q.y * v.z - q.z * v.y, iy = q.w * v.y + q.z * v.x - q.x * v.z, iz = q.w * v.z + q.x * v.y - q.y * v.x, iw = -q.x * v.x - q.y * v.y - q.z * v.z;
       return { x: ix * q.w + iw * -q.x + iy * -q.z - iz * -q.y, y: iy * q.w + iw * -q.y + iz * -q.x - ix * -q.z, z: iz * q.w + iw * -q.z + ix * -q.y - iy * -q.x };
     };
@@ -1775,7 +1774,7 @@
       var p = e._phys; if (!p) return; e._phys = null; e._q = null; if (e.mesh) e.mesh.rotation.set(0, e.rotY || 0, 0);
       delete byCol[p.col.handle]; if (pw) pw.removeRigidBody(p.rb);
     };
-    // o.type: 'dynamic' (падает, катится, толкается) | 'static' (неподвижная опора) | 'kinematic' (двигает игра через e.x/e.y/e.z) | 'solid' (сам движок)
+    // o.type: 'dynamic' (falls, rolls, gets pushed) | 'static' (a fixed support) | 'kinematic' (moved by the game via e.x/e.y/e.z) | 'solid' (by the engine)
     var makeBody = function (e, o) {
       if (e._phys) unphys(e);
       var type = o.type || 'dynamic';
@@ -1797,7 +1796,7 @@
       e._phys = p; byCol[col.handle] = p; return p;
     };
     var voxCollider = function (h) {
-      // кубы в сетку: куб с центром (i·size) занимает [i·size − size/2, i·size + size/2] — сдвигаем коллайдер на полкуба
+      // cubes on a grid: a cube centered at (i·size) covers [i·size − size/2, i·size + size/2] — shift the collider by half a cube
       var s = h.size, a = new Int32Array(h.list.length * 3);
       h.list.forEach(function (v, i) { a[i * 3] = Math.round(v.x / s); a[i * 3 + 1] = Math.round(v.y / s); a[i * 3 + 2] = Math.round(v.z / s); });
       h.col = pw.createCollider(R.ColliderDesc.voxels(a, { x: s, y: s, z: s }).setTranslation(-s / 2, -s / 2, -s / 2));
@@ -1835,7 +1834,7 @@
       };
       e.body = b; return b;
     };
-    // луч: { e, x, y, z, dist } первого объекта на пути (или null); o.ignore — объект, который луч пропускает (сам стрелок)
+    // ray: { e, x, y, z, dist } of the first object on the way (or null); o.ignore — an object the ray passes through (the shooter)
     UB.ray3d = function (from, dir, maxDist, o) {
       if (!pw) UB.physics();
       o = o || {};
@@ -1846,7 +1845,7 @@
       var t = hit.timeOfImpact, p = byCol[hit.collider.handle];
       return { e: p ? p.e : null, x: from.x + d.x * t, y: from.y + d.y * t, z: from.z + d.z * t, dist: t };
     };
-    // взрыв: всё подвижное в радиусе разлетается от точки (сильнее — ближе к центру)
+    // explosion: everything movable within the radius flies away from the point (stronger closer to the center)
     UB.explode = function (x, y, z, o) {
       if (!pw) UB.physics();
       o = o || {}; var rad = o.radius || 5, pow = o.power == null ? 12 : o.power;
@@ -1857,8 +1856,8 @@
         p.rb.applyImpulse({ x: dx * k, y: dy * k + pow * 0.3 * p.rb.mass(), z: dz * k }, true);
       });
     };
-    // связь двух тел: 'ball' (шарнир-шар), 'hinge' (дверь, колесо; o.axis 'x'|'y'|'z'), 'rope' (верёвка длиной o.length), 'spring' (пружина)
-    // b = null — привязать к миру (маятник, качели). o.at — точка мира, где связь (по умолчанию: между центрами)
+    // joint between two bodies: 'ball' (ball joint), 'hinge' (door, wheel; o.axis 'x'|'y'|'z'), 'rope' (rope of length o.length), 'spring'
+    // b = null — attach to the world (pendulum, swing). o.at — the world point of the joint (default: between the centers)
     UB.joint = function (a, b2, o) {
       if (!pw) UB.physics();
       o = o || {};
@@ -1879,11 +1878,11 @@
       var j = pw.createImpulseJoint(jd, rb1, rb2, true);
       return { remove: function () { if (pw) { pw.removeImpulseJoint(j, true); if (anchorBody) pw.removeRigidBody(anchorBody); } } };
     };
-    // перед шагом: solid-объекты появились/пропали, игра сдвинула опору или переставила тело (e.x = …) — переносим в мир Rapier
+    // before the step: solid objects appeared/disappeared, the game moved a support or a body (e.x = …) — copy into the Rapier world
     var physSync = function () {
       ents.forEach(function (e) {
         var p = e._phys;
-        if (e._isPlayer) { if (p && p.type === 'solid') unphys(e); return; }   // героя ведёт контроллер персонажа
+        if (e._isPlayer) { if (p && p.type === 'solid') unphys(e); return; }   // the hero is driven by the character controller
         if (e.solid && !p) { makeBody(e, { type: 'solid' }); return; }
         if (!p) return;
         if (p.type === 'solid' && !e.solid) { unphys(e); return; }
@@ -1897,7 +1896,7 @@
         }
       });
     };
-    // игрок: капсула-«персонаж»; игра переставила героя (респаун) — переносим без проверки стен
+    // player: a character capsule; the game moved the hero (respawn) — move without checking walls
     var physMove = function (pc, dx, dy, dz) {
       var e = pc.e;
       if (!pc.rb) {
@@ -1915,7 +1914,7 @@
         e.x = c.x + m.x; e.y = c.y + m.y; e.z = c.z + m.z;
         pc.onGround = pcc.computedGrounded();
         if (pc.onGround && e.vy < 0) e.vy = 0;
-        else if (e.vy > 0 && m.y < dy * 0.5) e.vy = 0;   // головой в потолок
+        else if (e.vy > 0 && m.y < dy * 0.5) e.vy = 0;   // head hit the ceiling
       }
       pc.rb.setNextKinematicTranslation({ x: e.x, y: e.y, z: e.z });
     };
@@ -1953,8 +1952,8 @@
       });
       if (pw) physStep(dt);
     };
-    // Автокачество: первые 2 с не считаем (загрузка), дальше окно 3 с. Медленно (кадр > 28 мс) — сначала выключаем тени,
-    // потом снижаем чёткость (1 → 0.75). Скрытая вкладка сюда не попадает (render3d не зовётся).
+    // Auto quality: the first 2 s are skipped (loading), then 3 s windows. Slow (frames > 28 ms) — first shadows go off,
+    // then the resolution drops (1 → 0.75). A hidden tab never gets here (render3d isn't called).
     var autoQuality = function (dt) {
       var q = quality; q.t += dt; if (q.t < 2) return;
       q.frames++; if (dt > 0.028) q.slow++;
@@ -1968,7 +1967,7 @@
       else q.mode = 'done';
       UB.quality3d = { shadows: q.shadows, pixelRatio: q.ratio };
     };
-    // нагрузка последнего кадра: команд рисования (calls), треугольников, объектов; кадров в секунду
+    // last frame's load: draw calls, triangles, objects; frames per second
     var fpsAcc = 0, fpsN = 0, fpsVal = 0;
     UB.stats3d = function () { var r = renderer && renderer.info.render; return { calls: r ? r.calls : 0, triangles: r ? r.triangles : 0, objects: ents.length, fps: fpsVal, shadows: !!(quality && quality.shadows), pixelRatio: quality ? quality.ratio : 1 }; };
     UB.render3d = function (dt) {
@@ -1977,11 +1976,11 @@
       ents.forEach(function (e) {
         e.mesh.position.set(e.x, e.y, e.z); e.mesh.visible = e.visible && !(e._sleep && e.shape !== 'prefab');
         if (e.shape === 'image' || e.shape === 'label') return;
-        if (e._q) e.mesh.quaternion.set(e._q.x, e._q.y, e._q.z, e._q.w); else e.mesh.rotation.y = e.rotY;   // тело физики вертится по всем осям
+        if (e._q) e.mesh.quaternion.set(e._q.x, e._q.y, e._q.z, e._q.w); else e.mesh.rotation.y = e.rotY;   // a physics body spins around all axes
       });
       if (!quality || quality.batch !== false) stepBatches();
       if (cam.mode === 'follow' && cam.target) {
-        // камера держит постоянный угол (cam.yaw, по умолчанию — позади, «вперёд» = −z): иначе управление относительно камеры крутило бы героя по кругу
+        // the camera keeps a fixed angle (cam.yaw, behind by default, "forward" = −z): otherwise camera-relative controls would spin the hero in circles
         var t = cam.target, yaw = cam.yaw || 0, tx = t.x + Math.sin(yaw) * cam.distance, tz = t.z + Math.cos(yaw) * cam.distance;
         var k = Math.min(1, dt * 4);
         camera.position.x += (tx - camera.position.x) * k; camera.position.z += (tz - camera.position.z) * k; camera.position.y += (t.y + cam.height - camera.position.y) * k;
@@ -1992,14 +1991,14 @@
         camTargetX = ft.x - sy; camTargetZ = ft.z - cy; if (ft.mesh) ft.mesh.visible = false;
         UB.look.yaw = cam.yaw; UB.look.pitch = cam.pitch || 0;
       } else if (cam.mode === 'top' && cam.target) {
-        // «вверх» на экране = −z, как у камеры сзади: точка-цель для угла управления — по ту же сторону, что и камера (иначе WASD зеркальны)
+        // screen "up" = −z, like the chase camera: the target point for the control angle is on the camera's side (otherwise WASD is mirrored)
         camera.position.set(cam.target.x, cam.target.y + (cam.height || 22), cam.target.z + 0.01); camTargetX = cam.target.x; camTargetZ = cam.target.z - 1; camera.lookAt(cam.target.x, cam.target.y, cam.target.z);
       } else {
         camera.position.set(cam.x || 0, cam.y == null ? 12 : cam.y, cam.z == null ? 18 : cam.z); var lk = cam.look || { x: 0, y: 0, z: 0 }; camTargetX = lk.x; camTargetZ = lk.z; camera.lookAt(lk.x, lk.y, lk.z);
       }
       if (skyDome) skyDome.position.copy(camera.position);
       if (sun) {
-        // солнце светит на то место, куда смотрит камера; шаг 2 м — тени не «дрожат» при движении
+        // the sun shines where the camera looks; 2 m steps — shadows don't shimmer while moving
         var fx0 = Math.round(camTargetX / 2) * 2, fz0 = Math.round(camTargetZ / 2) * 2;
         sun.position.set(fx0 + 30, 60, fz0 + 20); sun.target.position.set(fx0, 0, fz0);
       }
@@ -2018,7 +2017,7 @@
   var K = UB.kit = {};
   var W = function () { return UB.width; }, H = function () { return UB.height; };
 
-  // ---------- общие тексты интерфейса ----------
+  // ---------- shared UI texts ----------
   var TEXT = {
     ru: { play: 'Играть', again: 'Ещё раз', menu: 'Меню', level: 'Уровень', score: 'Очки', best: 'Рекорд', win: 'Победа!', lose: 'Игра окончена', complete: 'Уровень пройден!',
       pressStart: 'Пробел — начать', tapStart: 'Нажми «Играть»', top: 'Прыгни — верхний ответ', bottom: 'Беги — нижний ответ', lobby: 'Подключайтесь с телефонов!', players: 'Игроки',
@@ -2036,7 +2035,7 @@
   var texts = function (cfg) { var t = Object.assign({}, TEXT[cfg.lang] || TEXT.en); return Object.assign(t, cfg.text || {}); };
   var TEAM = ['#4cc9f0', '#f72585'];
 
-  // ---------- рисунки: картинка ИИ по имени, эмодзи или нарисованный «персонаж» ----------
+  // ---------- art: an AI picture by name, an emoji or a drawn "character" ----------
   var blob = function (g, x, y, w, h, color, o) {
     o = o || {}; var c = g.ctx; c.save(); c.translate(x, y); if (o.flip) c.scale(-1, 1); if (o.alpha != null) c.globalAlpha = o.alpha;
     g.roundRect(-w / 2, -h / 2, w, h, Math.min(w, h) * 0.38, color);
@@ -2061,7 +2060,7 @@
     for (var x = 0; x <= W() + 20; x += 20) { var t = (x + scroll * k) * freq; p.push([x, base - Math.sin(t) * amp - Math.sin(t * 2.3 + 1) * amp * 0.35]); }
     p.push([W(), H()]); g.poly(p, color);
   };
-  // фон: имя картинки мира (из IMAGES) — с лёгким параллаксом; иначе градиент [верх, низ, дальние холмы, ближние холмы]
+  // background: a world picture name (from IMAGES) with light parallax; otherwise a gradient [top, bottom, far hills, near hills]
   var sky = function (g, bg, scroll) {
     scroll = scroll || 0;
     if (typeof bg === 'string' && UB.hasImage(bg)) {
@@ -2074,7 +2073,7 @@
     hills(g, c[3] || 'rgba(20,40,60,.14)', scroll, 0.4, H() * 0.75, 30, 0.01);
   };
 
-  // ---------- меню и итоги — общие для наборов ----------
+  // ---------- menu and results, shared by the kits ----------
   var bestKey = function (cfg) { return 'kit-best-' + (cfg.title || 'game'); };
   var menuScene = function (cfg, T) {
     UB.scene('menu', {
@@ -2083,7 +2082,7 @@
       draw: function (g, s) {
         var bg = cfg.background || (cfg.levels && cfg.levels[0] && cfg.levels[0].background);
         sky(g, bg, s.t * 30); g.rect(0, 0, W(), H(), 'rgba(8,10,30,.35)');
-        // длинное название — шрифт меньше, чтобы влезло в ширину
+        // long title — smaller font so it fits the width
         var ts = W() < 600 ? 40 : 58; g.ctx.font = '700 ' + ts + 'px system-ui, sans-serif';
         while (ts > 22 && g.ctx.measureText(cfg.title || '').width > W() - 60) { ts -= 2; g.ctx.font = '700 ' + ts + 'px system-ui, sans-serif'; }
         g.text(cfg.title || '', W() / 2, H() * 0.15 + UB.wave(2, 5), { align: 'center', baseline: 'middle', size: ts, color: '#fff', shadow: true });
@@ -2117,13 +2116,13 @@
       },
     });
   };
-  // перемешанная колода вопросов без повторов, пока не кончатся все
+  // a shuffled deck of questions with no repeats until all are used
   var deck = function (list) { var d = []; return function () { if (!list || !list.length) return null; if (!d.length) d = UB.shuffle(list); return d.pop(); }; };
   var starsFor = function (lives, max) { return lives >= max ? 3 : lives >= Math.max(1, max - 1) ? 2 : 1; };
   var levelBanner = function (s, T, lv, i) { s.banner = { text: T.level + ' ' + (i + 1) + (lv && lv.name ? ': ' + lv.name : ''), a: 1 }; UB.tween(s.banner, { a: 0 }, 1.8, 'inQuad'); };
   var drawBanner = function (g, s) { if (s.banner && s.banner.a > 0.02) { g.ctx.globalAlpha = Math.min(1, s.banner.a * 1.6); UB.hud.banner(s.banner.text, { size: 34, y: H() * 0.24 }); g.ctx.globalAlpha = 1; } };
   var hook = function (cfg, name) { var h = cfg.hooks && cfg.hooks[name]; return typeof h === 'function' ? h : null; };
-  // общие действия для крючков: s.addScore, s.hurt, s.heal, s.win, s.lose, s.ask
+  // shared actions for hooks: s.addScore, s.hurt, s.heal, s.win, s.lose, s.ask
   var actions = function (cfg, T, s, ask, onWin, onLose) {
     s.addScore = function (n, x, y) { s.score += n; UB.score(s.score); if (x != null) UB.popup((n > 0 ? '+' : '') + n, x, y); };
     s.hurt = function () {
@@ -2145,10 +2144,10 @@
     });
   };
 
-  // ======================= ПЛАТФОРМЕР =======================
-  // Уровни строками: # земля, = платформа (снизу проходима), P старт, F финиш, ^ шипы, B пружина, ? блок-вопрос,
-  // D дверь (открывает верный ответ), H сердце, * звезда-сила, M движущаяся платформа, o монета (score 10);
-  // свои буквы — cfg.items (собираемое), cfg.enemies (враги), cfg.tiles (свои клетки с крючком touch).
+  // ======================= PLATFORMER =======================
+  // Levels as strings: # ground, = platform (passable from below), P start, F finish, ^ spikes, B spring, ? question block,
+  // D door (a correct answer opens it), H heart, * power star, M moving platform, o coin (score 10);
+  // your own letters — cfg.items (collectibles), cfg.enemies (enemies), cfg.tiles (custom cells with a touch hook).
   K.platformer = function (cfg) {
     var T = texts(cfg), L = cfg.levels || [], TS = cfg.tile || 48, ask = deck(cfg.questions);
     UB.touchControls(['left', 'right', 'jump']);
@@ -2189,7 +2188,7 @@
         var r = UB.platformer(hero, s.lvl.solids, dt, { speed: (cfg.speed || 300) * (s.power > 0 ? 1.3 : 1), jump: cfg.jump || 760, gravity: cfg.gravity || 1900 });
         if (r.ground && wasAir) { hero.sq = 0.7; UB.tween(hero, { sq: 1 }, 0.25, 'outBack'); }
         if (hero.y > s.lvl.h + 200) { s.hurt(); if (!s.over) { hero.x = s.check.x; hero.y = s.check.y; hero.vx = hero.vy = 0; } }
-        // враги
+        // enemies
         s.enemies.forEach(function (e) {
           if (!e.alive) return;
           var ai = e.def.ai || 'patrol', sp = e.def.speed || 80;
@@ -2206,7 +2205,7 @@
             else { s.hurt(); hero.vx = (hero.x < e.x ? -1 : 1) * 420; hero.vy = -380; }
           }
         });
-        // предметы
+        // items
         for (i = 0; i < s.items.length; i++) {
           var it = s.items[i]; if (it.dead) continue;
           var box = it.ch === '^' ? { x: it.x + 6, y: it.y + TS * 0.55, w: TS - 12, h: TS * 0.45 } : it.ch === 'B' ? { x: it.x + 6, y: it.y + TS * 0.6, w: TS - 12, h: TS * 0.4 } : { x: it.x + 8, y: it.y + 8, w: TS - 16, h: TS - 16 };
@@ -2225,7 +2224,7 @@
             (function (it) { s.ask(function (ok) { if (ok) { it.dead = true; s.addScore(cfg.quizScore || 50, it.x + TS / 2, it.y); UB.burst(it.x + TS / 2, it.y + TS / 2, { count: 24 }); } else { s.hurt(); } }); })(it);
           } else if (it.def && it.def.touch) it.def.touch(s, it);
         }
-        // двери: подошёл вплотную — вопрос; верно — дверь открыта
+        // doors: come close — a question; correct — the door opens
         s.doors.forEach(function (dr) {
           if (dr.dead || dr.wait > s.t) return;
           if (UB.overlap({ x: hero.x - 6, y: hero.y, w: hero.w + 12, h: hero.h }, dr)) { dr.wait = s.t + 2; s.ask(function (ok) { if (ok) { dr.dead = true; UB.burst(dr.x + TS / 2, dr.y + TS / 2, { color: '#ffd166', count: 26 }); s.addScore(cfg.quizScore || 50, dr.x + TS / 2, dr.y); } else s.hurt(); }); }
@@ -2281,7 +2280,7 @@
     });
   };
 
-  // ======================= РАННЕР =======================
+  // ======================= RUNNER =======================
   K.runner = function (cfg) {
     var T = texts(cfg), L = cfg.levels || [{ length: 4000 }], ask = deck(cfg.questions);
     UB.touchControls(cfg.duck ? ['down', 'jump'] : ['jump']);
@@ -2304,21 +2303,21 @@
         if (s.over) return;
         s.speed += (cfg.speedUp == null ? 8 : cfg.speedUp) * dt;
         var v = s.speed * (s.power > 0 ? 1.35 : 1); s.dist += v * dt; s.scroll += v * dt;
-        // прыжок (двойной — если cfg.doubleJump), присесть
+        // jump (double — if cfg.doubleJump), duck
         var duck = cfg.duck && UB.key('down') && hero.onGround;
         hero.h = duck ? 36 : 64;
         if ((UB.pressed('jump') || UB.pressed('up')) && (hero.onGround || (cfg.doubleJump && hero.jumps < 2))) { hero.vy = -(cfg.jump || 820) * (hero.onGround ? 1 : 0.85); hero.onGround = false; hero.jumps++; UB.sfx('jump'); }
         if (!UB.key('jump') && !UB.key('up') && hero.vy < 0) hero.vy += 1900 * dt;
         hero.vy += 2300 * dt; hero.y += hero.vy * dt;
         if (hero.y + hero.h >= s.ground) { if (!hero.onGround) { hero.sq = 0.7; UB.tween(hero, { sq: 1 }, 0.25, 'outBack'); } hero.y = s.ground - hero.h; hero.vy = 0; hero.onGround = true; hero.jumps = 0; }
-        // появление препятствий, монет и ворот с вопросом
+        // spawning obstacles, coins and question gates
         s.next -= dt; s.nextQ -= dt;
         var defs = lv.obstacles || cfg.obstacles || [{ color: '#6c757d', w: 40, h: 50 }];
         if (s.nextQ <= 0 && cfg.questions && cfg.questions.length && !s.gate) {
           var q = ask(); s.nextQ = cfg.quizEvery || 10;
           if (q) { var wrong = q.options.filter(function (o, i) { return i !== q.correct; }); var top = Math.random() < 0.5; s.gate = { q: q.q, x: W() + 60, top: top ? q.options[q.correct] : UB.pick(wrong), bottom: top ? UB.pick(wrong) : q.options[q.correct], ok: top ? 'top' : 'bottom', done: false }; s.next = 2.4; s.picks = s.picks.filter(function (p) { return p.x < W() - 220; }); s.obs = s.obs.filter(function (o) { return o.x < W() - 220; }); }
         }
-        // пока на экране ворота с ответами — без препятствий и монет: табличка должна читаться
+        // while answer gates are on screen — no obstacles or coins: the sign must be readable
         if (s.next <= 0 && s.gate && !s.gate.done) s.next = 0.3;
         if (s.next <= 0) {
           var od = UB.pick(defs), fly = !!od.fly;
@@ -2389,7 +2388,7 @@
     });
   };
 
-  // ======================= ЛАБИРИНТ =======================
+  // ======================= MAZE =======================
   var makeMaze = function (cols, rows, loops) {
     cols = cols | 1; rows = rows | 1; var m = [], x, y;
     for (y = 0; y < rows; y++) { m.push([]); for (x = 0; x < cols; x++) m[y].push('#'); }
@@ -2496,7 +2495,7 @@
     });
   };
 
-  // ======================= СТРЕЛЯЛКА-ВИКТОРИНА =======================
+  // ======================= QUIZ SHOOTER =======================
   K.shooter = function (cfg) {
     var T = texts(cfg), L = cfg.levels || [{ questions: 6 }], ask = deck(cfg.questions);
     UB.touchControls(['left', 'right', 'fire']);
@@ -2531,7 +2530,7 @@
           (s.triple > 0 ? [-0.25, 0, 0.25] : [0]).forEach(function (a) { s.shots.push({ x: sh.x, y: sh.y - 34, vx: Math.sin(a) * 700, vy: -Math.cos(a) * 700 }); });
         }
         s.shots.forEach(function (b) { b.x += b.vx * dt; b.y += b.vy * dt; }); s.shots = s.shots.filter(function (b) { return b.y > -20 && !b.dead; });
-        // мишени-ответы
+        // answer targets
         var tg = s.targets || [];
         tg.forEach(function (t) {
           t.y += t.vy * dt * (s.power > 0 ? 0.4 : 1); t.x += Math.sin(s.t * 1.5 + t.ph) * 30 * dt;
@@ -2549,7 +2548,7 @@
           });
           if (!t.dead && t.y > H() + 40) { t.dead = true; if (t.ok) { s.streak = 0; s.hurt(); s.targets.forEach(function (o) { o.dead = true; }); if (!s.over) UB.after(0.6, function () { newQ(s); }); } }
         });
-        // камни-помехи и бонусы из них
+        // rocks in the way and bonuses from them
         if (Math.random() < dt * (s.lv.rocks == null ? 0.5 : s.lv.rocks)) s.rocks.push({ x: UB.rand(30, W() - 30), y: -30, vy: UB.rand(120, 220), r: UB.rand(16, 26), rot: 0 });
         s.rocks.forEach(function (r) {
           r.y += r.vy * dt; r.rot += dt;
@@ -2589,7 +2588,7 @@
     });
   };
 
-  // ======================= ВИКТОРИНА: один игрок (битва с боссом) или команды с телефонов =======================
+  // ======================= QUIZ: one player (boss battle) or teams on phones =======================
   K.quiz = function (cfg) {
     var T = texts(cfg);
     if (UB.net && UB.net.role === 'host') return quizHost(cfg, T);
@@ -2633,7 +2632,7 @@
       },
     });
   };
-  // командная викторина: экран-хост — вопрос, таймер, канат между командами; телефоны — четыре большие кнопки
+  // team quiz: the host screen shows the question, timer and a tug-of-war rope between teams; phones show four big buttons
   var OPT = ['#ef476f', '#ffd166', '#06d6a0', '#4cc9f0'];
   var quizHost = function (cfg, T) {
     var qs = UB.shuffle(cfg.questions || []).slice(0, cfg.rounds || 10), time = cfg.quizTime || 15;
@@ -2691,7 +2690,7 @@
           g.text(o, x + (i % 2) * 20 + w / 2, y + 35, { align: 'center', baseline: 'middle', size: 26, color: rv && i !== s.q.correct ? 'rgba(255,255,255,.5)' : '#1b1b2f' });
         });
         if (s.phase === 'q') UB.hud.bar(40, 372, W() - 80, 14, s.left / time); else [0, 1].forEach(function (t) { if (s.got[t]) UB.popup('+' + s.got[t], t ? W() * 0.8 : W() * 0.2, 380, { color: TEAM[t] }); s.got[t] = 0; });
-        // канат: смещается к команде, которая ведёт
+        // the rope moves toward the leading team
         var cy = H() - 80, cx = W() / 2 + s.tug * (W() * 0.3);
         g.line(80, cy, W() - 80, cy, '#c9a227', 8); g.rect(cx - 6, cy - 26, 12, 52, '#fff');
         [0, 1].forEach(function (t) { g.text(teamName(t) + ': ' + s.score[t], t ? W() - 60 : 60, cy - 40, { align: t ? 'right' : 'left', size: 26, color: TEAM[t], shadow: true }); });
